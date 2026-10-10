@@ -8,8 +8,8 @@ On **June 7, 2023**, wildfire smoke from Canada turned Princeton's sky orange. T
 
 | LCD | Verdict | When |
 |---|---|---|
-| 🟢 | **OPEN THE WINDOW** | The sky is cleaner than your room |
-| 🟡 | **EITHER WAY** | Inside and outside are about the same (moderate outdoor air) |
+| 🟢 | **OPEN THE WINDOW** | The sky is cleaner than your room (clean outdoor air, or moderate outdoor air and a stale room) |
+| 🟡 | **EITHER WAY** | Inside and outside are about the same (moderate outdoor air, room not stale) |
 | 🔴 | **KEEP IT SHUT** | Smoke, haze, ozone or particles in the sky (AQI > 100, PM2.5 > 35, or heavy haze) |
 | 🟣 | **VENTILATE NOW** | Your room just spiked (cleaners, markers, cooking, sanitizer) |
 
@@ -18,7 +18,7 @@ Press **🔊 Announce** and it reads the verdict aloud to the classroom: *"SkyWi
 ## How it connects to the sky
 
 - **The sky above you, live.** We pull outdoor US AQI, PM2.5, ozone, dust, **aerosol optical depth** (how much smoke or haze is in the air column), UV, cloud cover and **wind direction** for our exact location from Open-Meteo, which uses the CAMS atmospheric models.
-- **Sunbeam-through-haze meter.** We use the Beer–Lambert law to calculate how much of the direct sunbeam makes it through the aerosols on its slanted path at the current sun angle: `T = exp(−AOD / sin(sun elevation))`. That's about 88% on a clear day and about 14–30% under the 2023 smoke.
+- **Sunbeam-through-haze meter.** We use the Beer–Lambert law to calculate how much of the direct sunbeam makes it through the aerosols on its slanted path at the current sun angle: `T = exp(−AOD / sin(sun elevation))`. That's about 88% on a clear day with the sun high, and about 5–30% under the 2023 smoke depending on the sun angle.
 - **Sky Clarity sensor.** Our light sensor points out the window. After a one-tap calibration, we compare its reading with the theoretical clear-sky sunlight for this exact time and place (Haurwitz model plus solar position). The result shows how much of the sky's light is actually reaching you.
 - **Smoke Day replay.** One button replays June 7, 2023 over Princeton using real historical model data (AQI up to 151, aerosol optical depth up to 1.47). The device and dashboard react live, and the dashboard's sky turns orange.
 
@@ -26,7 +26,9 @@ Press **🔊 Announce** and it reads the verdict aloud to the classroom: *"SkyWi
 
 - **Classroom announcement (GenAI).** Google Gemini turns the live facts into one or two spoken sentences. The facts are the verdict, AQI, haze, wind and the cleanest 2-hour window in the forecast. The prompt only allows facts we pass in, so it can't make up numbers.
 - **Voice (ElevenLabs).** The briefing is read aloud by an ElevenLabs voice, in the browser or through the device's own speaker. With `SKYWINDOW_AUTO_ANNOUNCE=1` the device announces every time the verdict changes.
-- **Indoor event classifier (trained by us).** We recorded labeled sensor data during the hackathon: normal air, chemicals (hand sanitizer or markers), breath, and a covered light sensor. We trained a random forest (`ml/train.py`) on it. The dashboard shows what it thinks is happening in the room.
+- **Indoor event classifier (trained by us).** We recorded labeled sensor data during the hackathon: normal air, chemicals (hand sanitizer or markers), breath, and a covered light sensor. We trained a random forest (`ml/train.py`) on it. The dashboard shows what it thinks is happening in the room. Accuracy is cross-validated by labeling session, so it isn't inflated by near-identical back-to-back samples. The model and labeled data stay on the device (`ml/model.joblib`, `data/skywindow.db`); run `python ml/train.py` on the Pi after labeling.
+
+Verdict thresholds have hysteresis (for example, KEEP IT SHUT starts above AQI 100 and only ends below 95), so readings that hover around a boundary don't make the LCD or the announcements flip back and forth.
 
 **Honesty note:** the Grove Air Quality v1.3 is a VOC gas sensor with **relative** output. We never call its reading AQI. It becomes a 0–100 "stale index" measured against the room's own clean-air baseline. The outdoor AQI comes from real atmospheric data.
 
@@ -96,9 +98,12 @@ python device/lcd.py --test       # cycles the 4 verdict colours
 **On a laptop (no hardware, simulated sensors):**
 
 ```bash
-python -m venv .venv && .venv/Scripts/pip install fastapi uvicorn requests python-dotenv   # Windows
-python scripts/dev.py             # http://localhost:8000  - use the "Mock" buttons under Setup
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt          # macOS / Linux  (Windows: .venv\Scripts\pip)
+.venv/bin/python scripts/dev.py                    # http://localhost:8000 - use the "Mock" buttons under Setup
 ```
+
+Tests: `.venv/bin/pip install -r requirements-dev.txt && .venv/bin/python -m pytest`
 
 ### API
 
@@ -106,10 +111,12 @@ python scripts/dev.py             # http://localhost:8000  - use the "Mock" butt
 |---|---|---|
 | GET | `/api/now` | Full live state: verdict, indoor, sky, clarity, replay |
 | GET | `/api/history?minutes=60` | Logged readings |
-| POST | `/api/report` `{"speak": true}` | Generate the spoken announcement (+ ElevenLabs audio) |
+| POST | `/api/report` `{"speak": true}` | Generate the spoken announcement (+ ElevenLabs audio). Repeat requests within 15 s reuse it |
 | POST | `/api/replay` `{"on": true}` | Start or stop the Smoke Day replay |
 | POST | `/api/calibrate` `{"what": "air"\|"light"}` | Set the clean-air baseline, or calibrate the light sensor to the sky |
 | POST | `/api/label` `{"label": "chemical"}` | Record a labeled sample for the classifier |
+
+If `SKYWINDOW_TOKEN` is set in `.env`, every POST needs an `X-SkyWindow-Token` header. Open the dashboard once as `http://<pi-ip>:8000/?token=<token>` and the phone remembers it. Reads stay open.
 
 ## What's next
 

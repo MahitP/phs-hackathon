@@ -11,6 +11,7 @@ import requests
 LAT = float(os.environ.get("SKYWINDOW_LAT", "40.3587"))  # Princeton High School
 LON = float(os.environ.get("SKYWINDOW_LON", "-74.6560"))
 CACHE_SECONDS = 600
+RETRY_SECONDS = 60  # after a failed fetch, wait this long before trying again
 
 AQ_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 WX_URL = "https://api.open-meteo.com/v1/forecast"
@@ -18,7 +19,7 @@ AQ_VARS = "us_aqi,pm2_5,pm10,ozone,dust,aerosol_optical_depth,uv_index"
 WX_VARS = ("temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,cloud_cover,"
            "wind_speed_10m,wind_gusts_10m,wind_direction_10m,shortwave_radiation,is_day")
 
-_cache = {"at": 0.0, "data": None}
+_cache = {"at": 0.0, "tried": 0.0, "data": None, "stale": False}
 
 
 def _get(url, params):
@@ -27,12 +28,27 @@ def _get(url, params):
     return r.json()
 
 
-def fetch_sky(force=False):
-    """Return current sky conditions plus a 24h hourly forecast. Cached for 10 minutes;
-    on network failure returns the last good data marked stale (or None)."""
+def latest():
+    """Last fetched sky, without any network I/O - safe to call from the 1 Hz sensor loop.
+    Marked stale if the last fetch failed or nobody has refreshed it for 2 cache periods."""
+    data = _cache["data"]
+    if data is None:
+        return None
+    if _cache["stale"] or time.time() - _cache["at"] > 2 * CACHE_SECONDS:
+        return {**data, "stale": True}
+    return data
+
+
+def fetch_sky():
+    """Refresh current sky conditions plus a 24h hourly forecast when the 10-minute cache has
+    expired, then return latest(). Blocks on the network, so only the sky thread should call it.
+    On failure it keeps the last good data (marked stale) and waits RETRY_SECONDS before retrying."""
     now = time.time()
-    if not force and _cache["data"] and now - _cache["at"] < CACHE_SECONDS:
-        return _cache["data"]
+    if _cache["data"] and now - _cache["at"] < CACHE_SECONDS:
+        return latest()
+    if now - _cache["tried"] < RETRY_SECONDS:
+        return latest()
+    _cache["tried"] = now
     try:
         base = {"latitude": LAT, "longitude": LON, "timezone": "auto", "forecast_days": 2}
         aq = _get(AQ_URL, {**base, "current": AQ_VARS, "hourly": "us_aqi,pm2_5,aerosol_optical_depth"})
@@ -73,13 +89,11 @@ def fetch_sky(force=False):
             "fetched_at": now,
             "stale": False,
         }
-        _cache.update(at=now, data=data)
-        return data
+        _cache.update(at=now, data=data, stale=False)
     except Exception as exc:
         print(f"[sky] fetch failed: {exc!r}")
-        if _cache["data"]:
-            return {**_cache["data"], "stale": True}
-        return None
+        _cache["stale"] = True
+    return latest()
 
 
 def compass(deg):

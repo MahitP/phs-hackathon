@@ -2,9 +2,14 @@ const $ = (id) => document.getElementById(id);
 const fmt = (v, d = 0, unit = "") => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toFixed(d) + unit);
 let latest = null, serverMode = false, activeTab = "now", replayData = null, explored = null;
 
+// Optional write token (SKYWINDOW_TOKEN on the server): open the dashboard once as /?token=..., it's remembered.
+let TOKEN = new URLSearchParams(location.search).get("token");
+try { if (TOKEN) localStorage.setItem("skywindow-token", TOKEN); else TOKEN = localStorage.getItem("skywindow-token"); } catch (e) {}
+
 // ---------- data source: the Pi's API, or showcase mode straight from Open-Meteo ----------
 async function api(path, body) {
-  const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const headers = { "Content-Type": "application/json", ...(TOKEN ? { "X-SkyWindow-Token": TOKEN } : {}) };
+  const opts = body === undefined ? {} : { method: "POST", headers, body: JSON.stringify(body) };
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.json();
@@ -128,8 +133,10 @@ function render(s) {
   $("stale-bar").style.width = (ind.stale_index || 0) + "%";
   $("rate").textContent = `${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"} ${fmt(Math.abs(ind.rate_per_min || 0), 0)}/MIN`;
   $("air").textContent = ind.air == null ? "SIMULATED" : `${fmt(ind.air, 0)} / BASE ${fmt(ind.baseline, 0)}`;
-  const clar = cl.sensor_clarity ?? cl.model_clarity;
-  $("clarity").textContent = cl.daylight ? `${fmt(clar, 0, "%")} ${cl.sensor_clarity != null ? "SENSOR" : "MODEL"}` : "NIGHT";
+  // During replay the server drops model_clarity (2023 model sunlight ignores the smoke) -> show haze instead
+  const [clar, src] = cl.sensor_clarity != null ? [cl.sensor_clarity, "SENSOR"]
+    : cl.model_clarity != null ? [cl.model_clarity, "MODEL"] : [cl.haze_transmission, "THROUGH HAZE"];
+  $("clarity").textContent = cl.daylight ? `${fmt(clar, 0, "%")} ${src}` : "NIGHT";
 
   // weather at PHS
   const w = LocalSky.describeWeather(sky.weather_code);
@@ -220,20 +227,28 @@ function renderAlert(s, sky, cat) {
 }
 
 async function poll() {
-  try { render(await getState()); }
+  let s;
+  try { s = await getState(); }
   catch (e) {
     $("verdict-label").textContent = "LINKING…";
     $("hero-ticker").textContent = "ACQUIRING SKY SIGNAL…";
+    return;
   }
+  try { render(s); } catch (e) { console.error("render failed", e); } // a UI bug must not hide the verdict
 }
 
 // ---------- charts ----------
-Chart.defaults.color = "#8b95a7";
-Chart.defaults.borderColor = "rgba(255,255,255,0.08)";
-Chart.defaults.font.family = "JetBrains Mono";
-Chart.defaults.font.size = 10;
+// Chart.js comes from a CDN: if it didn't load (no internet), skip the charts instead of stopping this script
+const hasChart = typeof Chart !== "undefined";
+if (hasChart) {
+  Chart.defaults.color = "#8b95a7";
+  Chart.defaults.borderColor = "rgba(255,255,255,0.08)";
+  Chart.defaults.font.family = "JetBrains Mono";
+  Chart.defaults.font.size = 10;
+}
 let chart, fchart;
 function lineChart(el, datasets, labels) {
+  if (!hasChart) return null;
   return new Chart(el, {
     type: "line", data: { labels, datasets },
     options: { animation: false, responsive: true, interaction: { mode: "index", intersect: false },
@@ -330,11 +345,13 @@ document.querySelectorAll("[data-cal]").forEach((b) => (b.onclick = async () => 
   catch (e) { alert(e.message); }
 }));
 document.querySelectorAll("[data-label]").forEach((b) => (b.onclick = async () => {
-  await api("api/label", { label: b.dataset.label });
-  b.dataset.n = (+b.dataset.n || 0) + 1; b.textContent = `${b.dataset.label} (${b.dataset.n})`;
+  try {
+    await api("api/label", { label: b.dataset.label });
+    b.dataset.n = (+b.dataset.n || 0) + 1; b.textContent = `${b.dataset.label} (${b.dataset.n})`;
+  } catch (e) { alert(e.message); }
 }));
 document.querySelectorAll("[data-mock]").forEach((b) => (b.onclick = () => {
-  if (serverMode) api("api/mock/" + b.dataset.mock, {});
+  if (serverMode) api("api/mock/" + b.dataset.mock, {}).catch((e) => alert(e.message));
   else if (b.dataset.mock === "spike") LocalSky.spike();
 }));
 

@@ -1,10 +1,11 @@
 """SQLite log of readings + labeled samples for training the spike classifier."""
+import os
 import sqlite3
 import threading
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "skywindow.db"
+DB_PATH = Path(os.environ.get("SKYWINDOW_DB") or Path(__file__).resolve().parents[1] / "data" / "skywindow.db")
 _lock = threading.Lock()
 
 

@@ -13,6 +13,7 @@ Run directly to print live readings:  python device/hw.py
 import math
 import os
 import random
+import threading
 import time
 
 AIR_CHANNEL = int(os.environ.get("SKYWINDOW_AIR_CH", "0"))
@@ -100,6 +101,36 @@ class Smoother:
     def update(self, x):
         self.value = x if self.value is None else self.alpha * x + (1 - self.alpha) * self.value
         return self.value
+
+
+class RollingMin:
+    """Lowest value over the last `window` seconds, kept as per-bucket minima. Used for the
+    clean-air baseline so one freak low reading (or a calibration in another room, or sensor
+    drift) ages out after a day instead of sticking forever."""
+
+    def __init__(self, window=24 * 3600, bucket=3600):
+        self.window, self.bucket = window, bucket
+        self.buckets = {}  # bucket number -> lowest value seen in it
+        self._lock = threading.Lock()  # sensor loop updates, API calibration resets
+
+    def update(self, x, now=None):
+        now = time.time() if now is None else now
+        b = int(now // self.bucket)
+        with self._lock:
+            self.buckets[b] = min(x, self.buckets.get(b, x))
+            for k in [k for k in self.buckets if (k + 1) * self.bucket <= now - self.window]:
+                del self.buckets[k]
+        return self.value
+
+    def reset(self, x, now=None):
+        with self._lock:
+            self.buckets = {}
+        return self.update(x, now)
+
+    @property
+    def value(self):
+        with self._lock:
+            return min(self.buckets.values()) if self.buckets else None
 
 
 if __name__ == "__main__":
