@@ -15,8 +15,8 @@ echo "== python venv =="
 python3 -m venv .venv --system-site-packages
 . .venv/bin/activate
 pip install -r requirements.txt
-# Seeed grove.py provides the Base HAT ADC driver
-pip install git+https://github.com/Seeed-Studio/grove.py
+# Seeed grove.py provides the Base HAT ADC driver (pinned so a new upstream commit can't break the demo)
+pip install git+https://github.com/Seeed-Studio/grove.py@15505cb15014a19c30a02ddbef239eaa0a784ee3
 
 [ -f .env ] || cp .env.example .env
 [ -f data/smoke_day_2023.json ] || python scripts/fetch_smoke_day.py

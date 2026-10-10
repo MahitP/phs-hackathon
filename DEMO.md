@@ -19,6 +19,6 @@
 6. **Close (10 s).** *"AQI apps tell you about outside. SkyWindow compares the sky with your room and tells you what to do about it."*
 
 ## Likely judge questions
-- **Is the AI real?** Gemini writes the briefing from real data only. We also trained a random-forest classifier on sensor data we labeled here (see the accuracy from `ml/train.py`).
+- **Is the AI real?** Gemini writes the briefing from real data only. We also trained a random-forest classifier on sensor data we labeled here (see the session-grouped accuracy from `ml/train.py`).
 - **Is the indoor number accurate?** It's a relative VOC gas sensor, so we show a stale index compared with the room's own baseline, not a fake AQI. The outdoor numbers come from real atmospheric data (CAMS via Open-Meteo).
 - **Why not just use an AQI app?** Apps only report outside air. The decision depends on the *difference* between inside and outside, and on the forecast.

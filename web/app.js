@@ -2,8 +2,13 @@ const $ = (id) => document.getElementById(id);
 const fmt = (v, d = 0, unit = "") => (v === null || v === undefined ? "–" : Number(v).toFixed(d) + unit);
 let latest = null;
 
+// Optional write token (SKYWINDOW_TOKEN on the server): open the dashboard once as /?token=..., it's remembered.
+let TOKEN = new URLSearchParams(location.search).get("token");
+try { if (TOKEN) localStorage.setItem("skywindow-token", TOKEN); else TOKEN = localStorage.getItem("skywindow-token"); } catch (e) {}
+
 async function api(path, body) {
-  const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const headers = { "Content-Type": "application/json", ...(TOKEN ? { "X-SkyWindow-Token": TOKEN } : {}) };
+  const opts = body === undefined ? {} : { method: "POST", headers, body: JSON.stringify(body) };
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.json();
@@ -51,8 +56,10 @@ function render(s) {
   $("stale-bar").style.width = (ind.stale_index || 0) + "%";
   $("air").textContent = `${fmt(ind.air, 0)} (baseline ${fmt(ind.baseline, 0)})`;
   $("rate").textContent = `${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"} ${fmt(Math.abs(ind.rate_per_min), 0)}/min`;
-  const clar = cl.sensor_clarity ?? cl.model_clarity;
-  $("clarity").textContent = cl.daylight ? `${fmt(clar, 0, "%")} ${cl.sensor_clarity != null ? "(sensor)" : "(satellite/model)"}` : "night";
+  // During replay the server drops model_clarity (2023 model sunlight ignores the smoke) -> show haze instead
+  const [clar, src] = cl.sensor_clarity != null ? [cl.sensor_clarity, "sensor"]
+    : cl.model_clarity != null ? [cl.model_clarity, "satellite/model"] : [cl.haze_transmission, "through haze"];
+  $("clarity").textContent = cl.daylight ? `${fmt(clar, 0, "%")} (${src})` : "night";
   $("sun-el").textContent = fmt(cl.sun_elevation, 0, "°");
 
   const badges = [];
@@ -76,6 +83,7 @@ function render(s) {
 // ---- charts ----
 let chart, fchart;
 function lineChart(el, datasets, labels) {
+  if (typeof Chart === "undefined") return null; // Chart.js comes from a CDN; offline, skip the charts
   return new Chart(el, {
     type: "line",
     data: { labels, datasets },
@@ -145,13 +153,17 @@ document.querySelectorAll("[data-cal]").forEach((b) => (b.onclick = async () => 
   catch (e) { alert(e.message); }
 }));
 document.querySelectorAll("[data-label]").forEach((b) => (b.onclick = async () => {
-  await api("/api/label", { label: b.dataset.label });
-  b.dataset.n = (+b.dataset.n || 0) + 1; b.textContent = `${b.dataset.label} (${b.dataset.n})`;
+  try {
+    await api("/api/label", { label: b.dataset.label });
+    b.dataset.n = (+b.dataset.n || 0) + 1; b.textContent = `${b.dataset.label} (${b.dataset.n})`;
+  } catch (e) { alert(e.message); }
 }));
-document.querySelectorAll("[data-mock]").forEach((b) => (b.onclick = () => api("/api/mock/" + b.dataset.mock, {})));
+document.querySelectorAll("[data-mock]").forEach((b) => (b.onclick = () => api("/api/mock/" + b.dataset.mock, {}).catch((e) => alert(e.message))));
 
 async function poll() {
-  try { render(await api("/api/now")); } catch (e) { $("verdict-label").textContent = "Connecting…"; }
+  let s;
+  try { s = await api("/api/now"); } catch (e) { $("verdict-label").textContent = "Connecting…"; return; }
+  try { render(s); } catch (e) { console.error("render failed", e); } // a UI bug must not hide the verdict
 }
 poll(); setInterval(poll, 2000);
 refreshHistory().catch(() => {}); setInterval(() => refreshHistory().catch(() => {}), 30000);
