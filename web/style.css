@@ -1,0 +1,92 @@
+:root {
+  --sky-top: #3b82f6;
+  --sky-bottom: #bae6fd;
+  --sun: #fde047;
+  --card: rgba(255, 255, 255, 0.82);
+  --ink: #0f172a;
+  --muted: #475569;
+  --verdict: #2563eb;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --card: rgba(15, 23, 42, 0.78); --ink: #e2e8f0; --muted: #94a3b8; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--sky-bottom);
+  min-height: 100vh;
+}
+#sky {
+  position: fixed; inset: 0; z-index: -1; overflow: hidden;
+  background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom));
+  transition: background 2s;
+}
+#sun {
+  position: absolute; width: 140px; height: 140px; border-radius: 50%;
+  right: 8%; top: 6%;
+  background: radial-gradient(circle, var(--sun) 40%, transparent 70%);
+  transition: opacity 2s, filter 2s;
+}
+.cloud {
+  position: absolute; height: 46px; border-radius: 46px; background: rgba(255,255,255,.7);
+  filter: blur(2px); animation: drift 60s linear infinite;
+}
+.cloud.c1 { width: 180px; top: 18%; left: -200px; }
+.cloud.c2 { width: 120px; top: 34%; left: -200px; animation-delay: -30s; animation-duration: 80s; }
+@keyframes drift { to { transform: translateX(calc(100vw + 400px)); } }
+
+main { max-width: 900px; margin: 0 auto; padding: 16px; }
+header { color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.35); margin: 8px 0 16px; }
+h1 { margin: 0; font-size: 2.2rem; letter-spacing: .02em; }
+.tag { margin: 2px 0 8px; opacity: .95; }
+h2 { font-size: 1rem; margin: 0 0 10px; }
+.mt { margin-top: 18px; }
+
+.card {
+  background: var(--card); backdrop-filter: blur(10px);
+  border-radius: 18px; padding: 16px; margin-bottom: 14px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, .15);
+}
+#verdict { border-left: 10px solid var(--verdict); transition: border-color 1s; }
+#verdict-label { font-size: clamp(1.8rem, 7vw, 3rem); font-weight: 800; color: var(--verdict); transition: color 1s; }
+#reasons { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+#event { margin-top: 6px; font-size: .9rem; color: var(--muted); }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.split .card { margin-bottom: 0; }
+.split + .card { margin-top: 14px; }
+@media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
+
+.big { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.big span { font-size: 2.6rem; font-weight: 800; }
+.big small { color: var(--muted); }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: .95rem; }
+dt { color: var(--muted); }
+dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.meter { height: 10px; border-radius: 6px; background: rgba(100,116,139,.25); overflow: hidden; margin-bottom: 10px; }
+#stale-bar { height: 100%; width: 0; background: linear-gradient(90deg, #22c55e, #eab308, #ef4444); transition: width 1s; }
+#wind { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+#wind-arrow { transform-box: view-box; transform-origin: 50px 50px; transition: transform 1s; }
+.fine { font-size: .8rem; color: var(--muted); margin: 8px 0 0; }
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+button {
+  font: inherit; font-weight: 600; border: 0; border-radius: 999px; padding: 10px 18px;
+  background: var(--verdict); color: #fff; cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--ink); border: 1.5px solid currentColor; }
+button:disabled { opacity: .5; cursor: wait; }
+#report { font-size: 1.05rem; line-height: 1.5; }
+audio { height: 36px; max-width: 100%; }
+
+.badge { display: inline-block; font-size: .75rem; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+  background: rgba(0,0,0,.35); color: #fff; margin-right: 6px; }
+.badge.warn { background: #b45309; }
+.badge.replay { background: #dc2626; animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+
+details summary { cursor: pointer; font-weight: 600; }
+footer { text-align: center; font-size: .8rem; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.4); padding: 12px 0 24px; }
+footer a { color: inherit; }

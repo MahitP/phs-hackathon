@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyWindow</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="sky" aria-hidden="true"><div id="sun"></div><div class="cloud c1"></div><div class="cloud c2"></div></div>
+
+  <main>
+    <header>
+      <h1>SkyWindow</h1>
+      <p class="tag">Should I let the sky in?</p>
+      <div id="badges"></div>
+    </header>
+
+    <section id="verdict" class="card">
+      <div id="verdict-label">Starting up…</div>
+      <ul id="reasons"></ul>
+      <div id="event"></div>
+    </section>
+
+    <section class="split">
+      <div class="card">
+        <h2>☁️ The sky</h2>
+        <div class="big"><span id="aqi">–</span><small>US AQI</small></div>
+        <dl>
+          <dt>PM2.5</dt><dd id="pm25">–</dd>
+          <dt>Smoke haze (AOD)</dt><dd id="aod">–</dd>
+          <dt>Ozone</dt><dd id="ozone">–</dd>
+          <dt>Clouds</dt><dd id="clouds">–</dd>
+          <dt>UV</dt><dd id="uv">–</dd>
+          <dt>Sunbeam through haze</dt><dd id="haze">–</dd>
+        </dl>
+        <div id="wind">
+          <svg viewBox="0 0 100 100" width="64" height="64" aria-label="wind direction">
+            <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width="3"/>
+            <text x="50" y="15" text-anchor="middle" font-size="12" fill="currentColor">N</text>
+            <g id="wind-arrow"><path d="M50 22 L60 50 L50 44 L40 50 Z" fill="currentColor"/><rect x="47" y="44" width="6" height="34" fill="currentColor"/></g>
+          </svg>
+          <span id="wind-text">–</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>🏠 Your room</h2>
+        <div class="big"><span id="stale">–</span><small>stale index /100</small></div>
+        <div class="meter"><div id="stale-bar"></div></div>
+        <dl>
+          <dt>Air sensor</dt><dd id="air">–</dd>
+          <dt>Trend</dt><dd id="rate">–</dd>
+          <dt>Sky clarity</dt><dd id="clarity">–</dd>
+          <dt>Sun elevation</dt><dd id="sun-el">–</dd>
+        </dl>
+        <p class="fine">Indoor sensor is a relative VOC gas sensor, compared to this room's own clean-air baseline.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>✈️ Captain's announcement</h2>
+      <p id="report">Press the button for an AI briefing on the sky above you.</p>
+      <div class="row">
+        <button id="btn-report">▶ Brief me</button>
+        <button id="btn-speak" class="ghost" title="Play out loud from the device speaker">🔊 On device</button>
+        <audio id="audio" controls hidden></audio>
+      </div>
+      <p class="fine" id="report-engine"></p>
+    </section>
+
+    <section class="card">
+      <h2>📈 Last hour</h2>
+      <canvas id="chart" height="160"></canvas>
+      <h2 class="mt">🔭 Next 24h sky forecast</h2>
+      <canvas id="forecast" height="140"></canvas>
+    </section>
+
+    <section class="card">
+      <h2>🔥 Smoke Day replay</h2>
+      <p>Relive <b>June 7, 2023</b>, when wildfire smoke turned Princeton's sky orange. Real historical data, sped up to one hour every 4 seconds.</p>
+      <div class="row"><button id="btn-replay">Start replay</button></div>
+    </section>
+
+    <details class="card">
+      <summary>Setup &amp; training tools</summary>
+      <div class="row">
+        <button class="ghost" data-cal="air" title="Open the window/clean air, then press">Set clean-air baseline</button>
+        <button class="ghost" data-cal="light">Calibrate light sensor to sky</button>
+      </div>
+      <p class="fine">Label what's happening right now to train the indoor event classifier (ml/train.py):</p>
+      <div class="row">
+        <button class="ghost" data-label="normal">normal</button>
+        <button class="ghost" data-label="chemical">chemical</button>
+        <button class="ghost" data-label="breath">breath</button>
+        <button class="ghost" data-label="covered">covered</button>
+      </div>
+      <div class="row mock-only" hidden>
+        <button class="ghost" data-mock="spike">Mock: VOC spike</button>
+        <button class="ghost" data-mock="cover">Mock: cover light</button>
+      </div>
+    </details>
+
+    <footer>Sky data: <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0) · Built at hackPHS 2026 · Into the Skies</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

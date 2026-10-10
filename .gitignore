@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+data/skywindow.db
+data/audio/
+ml/model.joblib
+.venv/
