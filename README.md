@@ -86,7 +86,7 @@ nano .env                         # optional: GEMINI_API_KEY, ELEVENLABS_API_KEY
 sudo systemctl restart skywindow
 ```
 
-Then open `http://<pi-ip>:8000` on any phone on the same network.
+Then open `http://<pi-ip>:8000` on any phone on the same network. The site's libraries, fonts and Earth textures are bundled in `web/vendor/`, so it renders even when the phone has no internet (for example on a Pi hotspot); only the live sky data needs a connection.
 
 Hardware checks:
 

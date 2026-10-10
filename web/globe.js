@@ -8,7 +8,7 @@
 // three.js r128 (global THREE) + GSAP for the camera flight.
 const Globe = (() => {
   const LAT = 40.3587, LON = -74.656;
-  const TEXTURES = "https://threejs.org/examples/textures/planets/";
+  const TEXTURES = "vendor/textures/"; // bundled copies of threejs.org/examples/textures/planets/
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let renderer, scene, camera, earth, earthMesh, clouds, atmosphere, aerosols, marker, ring, sun, stars, pin, pinRing;
   let pickHandler = () => {}, downX = 0, downY = 0, downT = 0;
