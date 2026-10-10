@@ -26,6 +26,17 @@ VERDICTS = {
 }
 
 
+def aqi_category(aqi):
+    """Official U.S. EPA AQI category name."""
+    if aqi is None:
+        return "no data"
+    for limit, name in ((50, "good"), (100, "moderate"), (150, "unhealthy for sensitive groups"),
+                        (200, "unhealthy"), (300, "very unhealthy")):
+        if aqi <= limit:
+            return name
+    return "hazardous"
+
+
 def stale_index(reading, baseline):
     if baseline is None:
         return 0
@@ -40,15 +51,15 @@ def outdoor_level(sky):
     pm = sky.get("pm2_5")
     aod = sky.get("aod")
     if (aqi is not None and aqi > 100) or (pm is not None and pm > 35.4):
-        return "bad", f"outdoor AQI {aqi}, PM2.5 {pm} ug/m3"
+        return "bad", f"outdoor AQI {aqi} ({aqi_category(aqi)}), PM2.5 {pm} ug/m3"
     if aod is not None and aod > 0.7:
         return "bad", f"heavy haze overhead (aerosol optical depth {aod})"
     if aqi is not None and aqi > 50:
         return "moderate", f"outdoor AQI {aqi} (moderate)"
-    return "good", f"outdoor AQI {aqi}"
+    return "good", f"outdoor AQI {aqi} ({aqi_category(aqi)})"
 
 
-def decide(indoor_reading, baseline, rate_per_min, sky, warming_up=False):
+def decide(indoor_reading, baseline, rate_per_min, sky, warming_up=False, fires=None):
     if warming_up:
         key, reasons, idx = "warmup", ["air sensor heater warming up (2 min)"], 0
         return _pack(key, reasons, idx, "unknown")
@@ -70,6 +81,13 @@ def decide(indoor_reading, baseline, rate_per_min, sky, warming_up=False):
         reasons.append("both sides are clean - fresh air is a bonus")
     else:
         key = "either"
+
+    # NASA satellite fire detections upwind: the air is measured clean now, but smoke could arrive
+    if fires and fires.get("smoke_risk"):
+        reasons.append(f"{fires['upwind_count']} satellite fire detections upwind "
+                       f"({fires['upwind_frp_150km']} MW within 150 km) - smoke could drift in")
+        if key == "open":
+            key = "either"
     return _pack(key, reasons, idx, level)
 
 

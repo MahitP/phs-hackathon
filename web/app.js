@@ -1,31 +1,109 @@
 const $ = (id) => document.getElementById(id);
-const fmt = (v, d = 0, unit = "") => (v === null || v === undefined ? "–" : Number(v).toFixed(d) + unit);
-let latest = null;
+const fmt = (v, d = 0, unit = "") => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toFixed(d) + unit);
+let latest = null, serverMode = false, activeTab = "now", replayData = null, explored = null;
 
+// ---------- data source: the Pi's API, or showcase mode straight from Open-Meteo ----------
 async function api(path, body) {
   const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.json();
 }
-
-// ---- sky background: blue when clean, orange-grey when smoky, navy at night ----
-function mix(a, b, t) {
-  const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const [x, y] = [p(a), p(b)];
-  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+async function detectServer() {
+  try { const r = await fetch("api/now"); serverMode = r.ok || r.status === 503; } catch { serverMode = false; }
 }
-function paintSky(sky) {
-  const root = document.documentElement.style;
-  if (!sky) return;
-  const haze = Math.max(0, Math.min(1, Math.max(((sky.aod ?? 0.1) - 0.1) / 0.9, ((sky.us_aqi ?? 0) - 50) / 100)));
-  let top = mix("#3b82f6", "#8a5a3c", haze), bottom = mix("#bae6fd", "#f0a050", haze);
-  if (sky.is_day === 0) { top = mix("#0b1026", "#3b2a1a", haze); bottom = mix("#312e81", "#6b4426", haze); }
-  root.setProperty("--sky-top", top);
-  root.setProperty("--sky-bottom", bottom);
-  root.setProperty("--sun", mix("#fde047", "#ff5a1f", haze));
-  $("sun").style.opacity = sky.is_day === 0 ? 0 : 1 - (sky.cloud_cover ?? 0) / 160;
-  document.querySelectorAll(".cloud").forEach((c) => (c.style.opacity = 0.25 + (sky.cloud_cover ?? 30) / 130));
+async function getState() { return serverMode ? api("api/now") : LocalSky.state(); }
+
+function hazeOf(sky) {
+  if (!sky) return 0;
+  return Math.max(0, Math.min(1, Math.max(((sky.aod ?? 0.1) - 0.1) / 0.9, ((sky.us_aqi ?? 0) - 50) / 100)));
+}
+
+// ---------- splash → hero ----------
+async function boot() {
+  // splash counter follows the real Earth-texture download (90%), then the first sky reading
+  const pct = { v: 0 }, show = () => ($("splash-pct").textContent = Math.round(pct.v) + "%");
+  const earthReady = Globe.init($("globe"), (f) => gsap.to(pct, { v: Math.max(pct.v, f * 90), duration: 0.4, onUpdate: show }));
+  await Promise.all([earthReady, detectServer().then(poll), new Promise((r) => setTimeout(r, 1200))]);
+  gsap.to(pct, { v: 100, duration: 0.3, onUpdate: () => ($("splash-pct").textContent = Math.round(pct.v) + "%") });
+  gsap.to("#splash", { opacity: 0, duration: 0.9, delay: 0.35, onComplete: () => $("splash").remove() });
+  gsap.from("#hero > *", { y: 24, opacity: 0, stagger: 0.08, duration: 0.9, delay: 0.5, ease: "power3.out" });
+  setInterval(poll, 2000);
+  loadWorld();
+}
+
+$("btn-initiate").onclick = () => {
+  setSound(true);
+  gsap.to("#hero", { opacity: 0, y: -20, duration: 0.6, onComplete: () => ($("hero").hidden = true) });
+  Globe.focusHome();
+  $("hud").hidden = false;
+  setTimeout(() => { if (activeTab === "now") showScene("now", true); }, 2300); // keep zooming: globe -> city
+  gsap.fromTo("#hud .topbar", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.8, delay: 1.6 });
+  gsap.fromTo("#tab-now", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.9, delay: 1.9, ease: "power3.out" });
+  refreshHistory();
+};
+$("btn-orbit").onclick = () => {
+  $("hud").hidden = true;
+  $("hero").hidden = false;
+  gsap.fromTo("#hero", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, delay: 0.6 });
+  showScene("orbit");
+  Globe.release();
+};
+
+function setSound(on) {
+  const state = SkyAudio.toggle(on);
+  $("btn-sound").textContent = state ? "SOUND ON" : "SOUND OFF";
+  $("btn-sound").setAttribute("aria-pressed", state);
+}
+$("btn-sound").onclick = () => setSound();
+
+// ---------- tabs ----------
+document.querySelectorAll("[role=tab]").forEach((b) => (b.onclick = () => selectTab(b.dataset.tab)));
+function selectTab(name) {
+  activeTab = name;
+  document.querySelectorAll("[role=tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach((p) => (p.hidden = p.id !== "tab-" + name));
+  gsap.fromTo("#tab-" + name, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" });
+  if (!selectTab.keepView) showScene(name);
+  selectTab.keepView = false;
+  if (name === "replay") loadReplay();
+  if (name !== "explore" && explored) { explored = null; Globe.hidePin(); Globe.flyTo(Globe.HOME.lat, Globe.HOME.lon); }
+  if (name === "sky") { renderForecast.key = null; renderForecast(latest && latest.sky); refreshHistory(); }
+  if (name !== "replay" && name !== "explore" && latest) applySky(latest);
+}
+
+// ---------- scenes: close-up map (NOW = city, LOCAL = school) or the 3D globe ----------
+const MAP_VIEWS = { now: "city", local: "school" };
+let sceneIsMap = false;
+function showScene(name, plunge = false) {
+  const view = MAP_VIEWS[name];
+  if (view) {
+    LocalMap.init($("localmap"));
+    if (!sceneIsMap) {
+      $("localmap").hidden = false;
+      LocalMap.invalidate();
+      if (plunge) Globe.plunge(1.4); // zoom the globe toward Princeton while the map fades in
+      gsap.fromTo("#localmap", { opacity: 0 }, { opacity: 1, duration: plunge ? 1.4 : 0.6, delay: plunge ? 0.5 : 0 });
+      gsap.to("#globe", { opacity: 0, duration: 0.6, delay: plunge ? 1.2 : 0, onComplete: () => Globe.resetZoom() });
+      sceneIsMap = true;
+    }
+    LocalMap.view(view);
+    loadFires();
+  } else if (sceneIsMap) {
+    sceneIsMap = false;
+    gsap.to("#localmap", { opacity: 0, duration: 0.5, onComplete: () => ($("localmap").hidden = true) });
+    gsap.to("#globe", { opacity: 1, duration: 0.6 });
+  }
+}
+
+// ---------- live render ----------
+function applySky(s) {
+  const sky = s.sky || {};
+  const haze = hazeOf(sky);
+  Globe.setSky({ haze, wind: sky.wind_speed, night: sky.is_day === 0, cloud: sky.cloud_cover });
+  // EARTH is global context, so the PHS beacon shows its AQI category there, not the classroom verdict
+  Globe.setVerdictColor(activeTab === "explore" ? LocalSky.aqiCategory(sky.us_aqi).color : s.verdict.color);
+  SkyAudio.setSky({ wind: sky.wind_speed, haze });
 }
 
 function render(s) {
@@ -34,65 +112,148 @@ function render(s) {
   document.documentElement.style.setProperty("--verdict", v.color);
   $("verdict-label").textContent = v.label;
   $("reasons").innerHTML = v.reasons.map((r) => `<li>${r}</li>`).join("");
-  $("event").textContent = s.event ? `AI event classifier: ${s.event}` : "";
+  $("event").textContent = s.event ? `AI EVENT CLASSIFIER › ${s.event.toUpperCase()}` : "";
+  $("clock").textContent = s.replay ? "REPLAY " + s.replay.clock : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   $("aqi").textContent = fmt(sky.us_aqi);
+  const cat = LocalSky.aqiCategory(sky.us_aqi);
+  $("aqi-cat").textContent = cat.label;
+  $("aqi-cat").style.setProperty("--c", cat.color);
+  renderAlert(s, sky, cat);
   $("pm25").textContent = fmt(sky.pm2_5, 1, " µg/m³");
-  $("aod").textContent = sky.aod == null ? "–" : `${sky.aod.toFixed(2)} ${sky.aod > 0.7 ? "(smoky!)" : sky.aod > 0.3 ? "(hazy)" : "(clear)"}`;
+  $("aod").textContent = sky.aod == null ? "–" : `${sky.aod.toFixed(2)} ${sky.aod > 0.7 ? "SMOKY" : sky.aod > 0.3 ? "HAZY" : "CLEAR"}`;
+  $("haze").textContent = cl.haze_transmission == null ? "NIGHT" : fmt(cl.haze_transmission, 0, "%");
+  $("wind-text").textContent = sky.wind_dir == null ? "–" : `${fmt(sky.wind_speed, 0)} KM/H ${s.wind_compass}`;
+  $("stale").textContent = ind.warming_up ? "…" : fmt(ind.stale_index);
+  $("stale-bar").style.width = (ind.stale_index || 0) + "%";
+  $("rate").textContent = `${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"} ${fmt(Math.abs(ind.rate_per_min || 0), 0)}/MIN`;
+  $("air").textContent = ind.air == null ? "SIMULATED" : `${fmt(ind.air, 0)} / BASE ${fmt(ind.baseline, 0)}`;
+  const clar = cl.sensor_clarity ?? cl.model_clarity;
+  $("clarity").textContent = cl.daylight ? `${fmt(clar, 0, "%")} ${cl.sensor_clarity != null ? "SENSOR" : "MODEL"}` : "NIGHT";
+
+  // weather at PHS
+  const w = LocalSky.describeWeather(sky.weather_code);
+  $("wx-cond").textContent = `${w.icon} ${w.text}`;
+  $("wx-temp").textContent = `${fmt(sky.temperature, 0, "°")} / ${fmt(sky.feels_like, 0, "°C")}`;
+  $("wx-hum").textContent = fmt(sky.humidity, 0, "%");
+  $("wx-wind").textContent = sky.wind_speed == null ? "–" : `${fmt(sky.wind_speed, 0)}/${fmt(sky.wind_gusts, 0)} km/h ${s.wind_compass}`;
+  $("wx-rain").textContent = fmt(sky.precipitation, 1, " mm");
+  renderFireLine(s.fires);
+
+  // LOCAL: the Raspberry Pi inside the school vs the air outside
+  $("pi-label").textContent = s.mock ? "INSIDE · SIMULATED SENSOR" : "INSIDE · RASPBERRY PI";
+  $("local-scope").textContent = !serverMode ? "NO DEVICE (SHOWCASE)" : s.mock ? "ROOM SENSOR SIMULATED" : "ROOM SENSOR LIVE";
+  $("pi-stale").textContent = ind.warming_up ? "…" : fmt(ind.stale_index);
+  $("pi-trend").textContent = $("rate").textContent;
+  $("pi-air").textContent = ind.air == null ? "SIMULATED" : `${fmt(ind.air, 0)} (BASE ${fmt(ind.baseline, 0)})`;
+  $("pi-light").textContent = ind.light == null ? "–" : fmt(ind.light, 0);
+  $("pi-status").textContent = !serverMode ? "NO DEVICE (SHOWCASE)" : ind.warming_up ? "WARMING UP" : s.mock ? "MOCK SENSORS" : "LIVE";
+  $("po-aqi").textContent = fmt(sky.us_aqi);
+  $("po-cat").textContent = cat.label;
+  $("po-cat").style.setProperty("--c", cat.color);
+  $("po-wx").textContent = `${w.icon} ${w.text} ${fmt(sky.temperature, 0, "°C")}`;
+  $("po-wind").textContent = $("wx-wind").textContent;
+  LocalMap.updateDevice({ color: v.color, verdict: v.label, mock: s.mock || !serverMode,
+    inside: ind.warming_up ? "WARMING UP" : `STALE ${fmt(ind.stale_index)}/100 ${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"}`,
+    aqi: fmt(sky.us_aqi), cat: cat.short || cat.label, catColor: cat.color, weather: `${w.icon} ${fmt(sky.temperature, 0, "°C")}` });
+
+  // sky tab
   $("ozone").textContent = fmt(sky.ozone, 0, " µg/m³");
   $("clouds").textContent = fmt(sky.cloud_cover, 0, "%");
   $("uv").textContent = fmt(sky.uv_index, 1);
-  $("haze").textContent = cl.haze_transmission == null ? "night" : fmt(cl.haze_transmission, 0, "%");
-  // wind_dir is where wind comes FROM; arrow points where the air is going
-  $("wind-arrow").style.transform = `rotate(${((sky.wind_dir ?? 0) + 180) % 360}deg)`;
-  $("wind-text").textContent = sky.wind_dir == null ? "–" : `${fmt(sky.wind_speed, 0)} km/h from the ${s.wind_compass}`;
-
-  $("stale").textContent = ind.warming_up ? "…" : fmt(ind.stale_index);
-  $("stale-bar").style.width = (ind.stale_index || 0) + "%";
-  $("air").textContent = `${fmt(ind.air, 0)} (baseline ${fmt(ind.baseline, 0)})`;
-  $("rate").textContent = `${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"} ${fmt(Math.abs(ind.rate_per_min), 0)}/min`;
-  const clar = cl.sensor_clarity ?? cl.model_clarity;
-  $("clarity").textContent = cl.daylight ? `${fmt(clar, 0, "%")} ${cl.sensor_clarity != null ? "(sensor)" : "(satellite/model)"}` : "night";
   $("sun-el").textContent = fmt(cl.sun_elevation, 0, "°");
+  $("clear-sky").textContent = fmt(cl.clear_sky_wm2, 0, " W/m²");
+  $("temp").textContent = fmt(sky.temperature, 1, " °C");
+  $("wind-big").textContent = sky.wind_dir == null ? "–" : `${fmt(sky.wind_speed, 0)} km/h from ${s.wind_compass}`;
+  $("wind-arrow").style.transform = `rotate(${((sky.wind_dir ?? 0) + 180) % 360}deg)`;
 
-  const badges = [];
-  if (s.replay) badges.push(`<span class="badge replay">REPLAY · ${s.replay.label} · ${s.replay.clock}</span>`);
-  if (s.mock) badges.push(`<span class="badge warn">MOCK SENSORS</span>`);
-  if (sky.stale) badges.push(`<span class="badge warn">offline · sky data ${fmt(s.sky_age_min, 0)} min old</span>`);
-  if (!s.sky) badges.push(`<span class="badge warn">no sky data yet</span>`);
-  $("badges").innerHTML = badges.join("");
-  $("btn-replay").textContent = s.replay ? "Stop replay" : "Start replay";
+  // status + ticker
+  const chip = $("mode-chip");
+  chip.className = "chip mono" + (s.replay ? " replay" : serverMode && !s.mock ? " live" : "");
+  chip.textContent = s.replay ? `REPLAY ${s.replay.clock}` : serverMode ? (s.mock ? "DEVICE · MOCK SENSORS" : "DEVICE LIVE") : "SHOWCASE MODE";
+  const tick = `AQI ${fmt(sky.us_aqi)} · PM2.5 ${fmt(sky.pm2_5, 1)} · AOD ${fmt(sky.aod, 2)} · WIND ${s.wind_compass} ${fmt(sky.wind_speed, 0)} KM/H · ${v.label}`;
+  $("hero-ticker").textContent = "LIVE › " + tick;
+  $("foot-ticker").textContent = tick + (sky.stale ? ` · OFFLINE, SKY DATA ${fmt(s.sky_age_min, 0)} MIN OLD` : "");
+
+  document.querySelectorAll(".server-only").forEach((e) => (e.hidden = !serverMode));
   document.querySelectorAll(".mock-only").forEach((e) => (e.hidden = !s.mock));
-  $("btn-speak").hidden = !s.voice_enabled;
+  $("btn-replay").textContent = s.replay ? "■ STOP REPLAY" : serverMode ? "▶ PLAY ON DEVICE" : "▶ PLAY REPLAY";
+  $("replay-status").textContent = s.replay ? `PLAYING ${s.replay.clock} · ${s.replay.index + 1}/${s.replay.total}` : "";
 
-  if (s.last_report && s.last_report.at !== render.lastReportAt) {
-    render.lastReportAt = s.last_report.at;
-    showReport(s.last_report, false);
-  }
-  paintSky(s.sky);
-  renderForecast(s.sky);
+  if ((activeTab !== "replay" || s.replay) && !explored) applySky(s);
+  if (activeTab === "sky") renderForecast(sky);
 }
 
-// ---- charts ----
+// EPA guidance for each AQI category (airnow.gov)
+const EPA_ADVICE = [null, null,
+  "People with asthma, heart or lung disease, children, older adults and teens should limit long or heavy outdoor exertion.",
+  "Everyone should reduce long or heavy outdoor exertion. Sensitive groups should avoid it.",
+  "Everyone should avoid long or heavy outdoor exertion. Sensitive groups should stay indoors.",
+  "Health warning: everyone should avoid all outdoor exertion."];
+
+function renderFireLine(f) {
+  const el = $("fire-line");
+  if (!f || !f.available) { el.textContent = serverMode ? "FIRES: LOADING NASA SATELLITE DATA…" : ""; el.className = "mono fireline"; return; }
+  el.className = "mono fireline" + (f.smoke_risk ? " risk" : "");
+  el.textContent = `🔥 NASA FIRE DETECTIONS (7 DAYS): ${f.within_50km} WITHIN 50 KM · ${f.within_100km} WITHIN 100 KM · ` +
+    (f.upwind_count ? `${f.upwind_count} UPWIND${f.smoke_risk ? " · SMOKE COULD DRIFT IN" : " (SMALL)"}` : "NONE UPWIND RIGHT NOW");
+}
+
+function renderAlert(s, sky, cat) {
+  const el = $("alert");
+  if (s.replay) {
+    el.className = "alert mono historical";
+    el.innerHTML = `<b>HISTORICAL REPLAY</b> · ${s.replay.label.toUpperCase()} · ${s.replay.clock}. THIS IS RECORDED 2023 DATA, NOT CURRENT CONDITIONS.`;
+    el.hidden = false;
+  } else if (sky.us_aqi != null && cat.level >= 2) {
+    const cause = LocalSky.likelyCause(sky);
+    el.className = "alert mono";
+    el.innerHTML = `<b>⚠ AIR QUALITY ALERT · PRINCETON · AQI ${sky.us_aqi} · ${cat.label}</b>` +
+      (cause ? ` · LIKELY CAUSE: ${cause}` : "") + `<br>KEEP WINDOWS SHUT. ${EPA_ADVICE[cat.level].toUpperCase()}`;
+    el.hidden = false;
+  } else if (s.fires && s.fires.smoke_risk) {
+    el.className = "alert mono historical";
+    el.innerHTML = `<b>🔥 FIRE WATCH · PHS</b> · NASA SATELLITES DETECT ${s.fires.upwind_count} FIRE HOTSPOTS UPWIND ` +
+      `(${s.fires.upwind_frp_150km} MW WITHIN 150 KM). THE AIR IS FINE RIGHT NOW, BUT SMOKE COULD DRIFT IN. WATCH THE VERDICT BEFORE OPENING WINDOWS.`;
+    el.hidden = false;
+  } else el.hidden = true;
+}
+
+async function poll() {
+  try { render(await getState()); }
+  catch (e) {
+    $("verdict-label").textContent = "LINKING…";
+    $("hero-ticker").textContent = "ACQUIRING SKY SIGNAL…";
+  }
+}
+
+// ---------- charts ----------
+Chart.defaults.color = "#8b95a7";
+Chart.defaults.borderColor = "rgba(255,255,255,0.08)";
+Chart.defaults.font.family = "JetBrains Mono";
+Chart.defaults.font.size = 10;
 let chart, fchart;
 function lineChart(el, datasets, labels) {
   return new Chart(el, {
-    type: "line",
-    data: { labels, datasets },
+    type: "line", data: { labels, datasets },
     options: { animation: false, responsive: true, interaction: { mode: "index", intersect: false },
-      elements: { point: { radius: 0 } }, scales: { x: { ticks: { maxTicksLimit: 6 } } } },
+      elements: { point: { radius: 0 }, line: { borderWidth: 1.5 } },
+      plugins: { legend: { labels: { boxWidth: 10, boxHeight: 2 } } }, scales: { x: { ticks: { maxTicksLimit: 6 } } } },
   });
 }
 async function refreshHistory() {
-  const h = await api("/api/history?minutes=60");
+  if (!serverMode || activeTab !== "sky") return;
+  const h = await api("api/history?minutes=60").catch(() => []);
   const labels = h.map((r) => new Date(r.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   const ds = [
-    { label: "Room stale index", data: h.map((r) => r.stale_index), borderColor: "#9333ea", tension: 0.3 },
-    { label: "Sky AQI", data: h.map((r) => r.us_aqi), borderColor: "#0ea5e9", tension: 0.3 },
+    { label: "ROOM STALE", data: h.map((r) => r.stale_index), borderColor: "#c084fc", tension: 0.3 },
+    { label: "SKY AQI", data: h.map((r) => r.us_aqi), borderColor: "#60a5fa", tension: 0.3 },
   ];
   if (!chart) chart = lineChart($("chart"), ds, labels);
   else { chart.data.labels = labels; chart.data.datasets.forEach((d, i) => (d.data = ds[i].data)); chart.update(); }
 }
+setInterval(refreshHistory, 30000);
+
 function renderForecast(sky) {
   if (!sky || !sky.forecast) return;
   const f = sky.forecast, nowKey = (sky.time || "").slice(0, 13);
@@ -101,57 +262,275 @@ function renderForecast(sky) {
   const key = sl(f.time).join();
   if (renderForecast.key === key) return;
   renderForecast.key = key;
-  const labels = sl(f.time).map((t) => t.slice(11, 16));
   const ds = [
-    { label: "AQI", data: sl(f.us_aqi), borderColor: "#0ea5e9", tension: 0.3, yAxisID: "y" },
-    { label: "Smoke haze (AOD ×100)", data: sl(f.aod).map((x) => (x == null ? null : x * 100)), borderColor: "#ea580c", tension: 0.3, yAxisID: "y" },
-    { label: "Clouds %", data: sl(f.cloud_cover), borderColor: "#94a3b8", borderDash: [4, 4], tension: 0.3, yAxisID: "y" },
+    { label: "AQI", data: sl(f.us_aqi), borderColor: "#60a5fa", tension: 0.3 },
+    { label: "HAZE (AOD×100)", data: sl(f.aod).map((x) => (x == null ? null : x * 100)), borderColor: "#ff7a2e", tension: 0.3 },
+    { label: "CLOUDS %", data: sl(f.cloud_cover), borderColor: "#94a3b8", borderDash: [3, 3], tension: 0.3 },
   ];
   if (fchart) fchart.destroy();
-  fchart = lineChart($("forecast"), ds, labels);
+  fchart = lineChart($("forecast"), ds, sl(f.time).map((t) => t.slice(11, 16)));
 }
 
-// ---- report / voice ----
-function showReport(rep, autoplay) {
-  $("report").textContent = rep.text;
-  $("report-engine").textContent = `Written by ${rep.engine}${rep.audio_url ? " · voiced by ElevenLabs" : ""}`;
-  const a = $("audio");
-  if (rep.audio_url) {
-    a.src = rep.audio_url; a.hidden = false;
-    if (autoplay) a.play().catch(() => {});
-  } else if (autoplay && "speechSynthesis" in window) {
-    speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(rep.text)); // fallback voice
-  }
-}
-async function brief(speak) {
-  const b = speak ? $("btn-speak") : $("btn-report");
+// ---------- announce: read the verdict aloud (ElevenLabs on the device, browser voice otherwise) ----------
+$("btn-announce").onclick = async () => {
+  const b = $("btn-announce");
   b.disabled = true;
   try {
-    const rep = await api("/api/report", { speak });
-    render.lastReportAt = rep.at;
-    showReport(rep, !speak);
-  } catch (e) { $("report").textContent = "Couldn't get a briefing: " + e.message; }
+    const rep = serverMode ? await api("api/report", {}) : LocalSky.report(latest);
+    $("announce-text").textContent = "“" + rep.text + "”";
+    if (rep.audio_url) { $("audio").src = rep.audio_url; await $("audio").play().catch(() => {}); }
+    else if ("speechSynthesis" in window) { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(rep.text)); }
+  } catch (e) { $("announce-text").textContent = "Couldn't announce: " + e.message; }
   b.disabled = false;
-}
-$("btn-report").onclick = () => brief(false);
-$("btn-speak").onclick = () => brief(true);
-
-$("btn-replay").onclick = async () => {
-  try { await api("/api/replay", { on: !(latest && latest.replay) }); poll(); }
-  catch (e) { alert(e.message); }
 };
+
+// ---------- replay ----------
+async function loadReplay() {
+  if (!replayData) {
+    try { replayData = await LocalSky.smokeDay(); }
+    catch (e) { $("replay-status").textContent = "COULDN'T LOAD ARCHIVE: " + e.message; return; }
+    const max = Math.max(...replayData.hours.map((h) => h.us_aqi || 0));
+    $("scrub-bars").innerHTML = replayData.hours.map((h) => `<div style="height:${Math.max(4, 100 * (h.us_aqi || 0) / max)}%"></div>`).join("");
+    $("scrub").max = replayData.hours.length - 1;
+  }
+  showHour(+$("scrub").value);
+}
+function showHour(i) {
+  if (!replayData) return;
+  const h = replayData.hours[i], v = LocalSky.verdictFor(h);
+  $("r-time").textContent = h.time.slice(11, 16);
+  $("r-aqi").textContent = fmt(h.us_aqi);
+  $("r-aod").textContent = fmt(h.aod, 2);
+  $("r-pm").textContent = fmt(h.pm2_5, 1);
+  $("r-wind").textContent = `${LocalSky.compass(h.wind_dir)} ${fmt(h.wind_speed, 0)}`;
+  $("r-verdict").textContent = v.label;
+  $("r-verdict").style.color = v.color;
+  document.querySelectorAll("#scrub-bars div").forEach((d, j) => d.classList.toggle("on", j <= i));
+  Globe.setSky({ haze: hazeOf(h), wind: h.wind_speed, night: i < 6 || i > 20, cloud: h.cloud_cover });
+  Globe.setVerdictColor(v.color);
+  SkyAudio.setSky({ wind: h.wind_speed, haze: hazeOf(h) });
+}
+$("scrub").oninput = (e) => showHour(+e.target.value);
+$("btn-replay").onclick = async () => {
+  const on = !(latest && latest.replay);
+  try {
+    $("btn-replay").disabled = true;
+    if (serverMode) {
+      await api("api/replay", { on });
+      await new Promise((r) => setTimeout(r, 1200)); // let the device's 1 Hz loop pick it up
+    } else if (on) await LocalSky.startReplay(); else LocalSky.stopReplay();
+    await poll();
+  } catch (e) { $("replay-status").textContent = e.message; }
+  $("btn-replay").disabled = false;
+};
+
+// ---------- setup ----------
 document.querySelectorAll("[data-cal]").forEach((b) => (b.onclick = async () => {
-  try { const r = await api("/api/calibrate", { what: b.dataset.cal }); b.textContent = "✓ " + JSON.stringify(r); }
+  try { const r = await api("api/calibrate", { what: b.dataset.cal }); b.textContent = "✓ " + Object.entries(r).map(([k, v]) => `${k} ${(+v).toFixed(2)}`).join(" "); }
   catch (e) { alert(e.message); }
 }));
 document.querySelectorAll("[data-label]").forEach((b) => (b.onclick = async () => {
-  await api("/api/label", { label: b.dataset.label });
+  await api("api/label", { label: b.dataset.label });
   b.dataset.n = (+b.dataset.n || 0) + 1; b.textContent = `${b.dataset.label} (${b.dataset.n})`;
 }));
-document.querySelectorAll("[data-mock]").forEach((b) => (b.onclick = () => api("/api/mock/" + b.dataset.mock, {})));
+document.querySelectorAll("[data-mock]").forEach((b) => (b.onclick = () => {
+  if (serverMode) api("api/mock/" + b.dataset.mock, {});
+  else if (b.dataset.mock === "spike") LocalSky.spike();
+}));
 
-async function poll() {
-  try { render(await api("/api/now")); } catch (e) { $("verdict-label").textContent = "Connecting…"; }
+// ---------- explore: tap anywhere on Earth ----------
+async function explore(lat, lon, name) {
+  explored = { lat, lon };
+  if (activeTab !== "explore") selectTab("explore");
+  explored = { lat, lon };
+  $("explore-card").hidden = false;
+  $("x-coords").textContent = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`;
+  $("x-place").textContent = name || "Reading the sky…";
+  $("x-status").textContent = "LINKING TO THE ATMOSPHERE…";
+  try {
+    const r = await LocalSky.skyAt(lat, lon);
+    if (!explored || explored.lat !== lat || explored.lon !== lon) return; // user tapped somewhere else meanwhile
+    const sky = r.sky, cat = r.category, home = (latest && latest.sky) || {};
+    $("x-place").textContent = name || r.place || "Open ocean";
+    $("x-here").textContent = (name || r.place || "HERE").split(",")[0].toUpperCase().slice(0, 18);
+    $("x-verdict").textContent = sky.us_aqi == null ? "NO DATA" : `AQI ${sky.us_aqi}`;
+    $("explore-card").style.setProperty("--x", cat.color);
+    $("x-cat").textContent = cat.label + (r.cause ? " · " + r.cause : "");
+    $("x-cat").style.setProperty("--c", cat.color);
+    const xw = LocalSky.describeWeather(sky.weather_code), hw = LocalSky.describeWeather(home.weather_code);
+    const haze = (a) => (a == null ? "–" : `${a.toFixed(2)}${a > 0.7 ? " SMOKY" : a > 0.3 ? " HAZY" : ""}`);
+    const rows = [
+      ["aqi", fmt(sky.us_aqi), fmt(home.us_aqi), sky.us_aqi, home.us_aqi],
+      ["pm", fmt(sky.pm2_5, 1), fmt(home.pm2_5, 1), sky.pm2_5, home.pm2_5],
+      ["aod", haze(sky.aod), haze(home.aod), sky.aod, home.aod],
+      ["cond", `${xw.icon} ${xw.text}`, `${hw.icon} ${hw.text}`],
+      ["temp", fmt(sky.temperature, 0, "°C"), fmt(home.temperature, 0, "°C")],
+      ["hum", fmt(sky.humidity, 0, "%"), fmt(home.humidity, 0, "%")],
+      ["wind", sky.wind_dir == null ? "–" : `${LocalSky.compass(sky.wind_dir)} ${fmt(sky.wind_speed, 0)}`, home.wind_dir == null ? "–" : `${LocalSky.compass(home.wind_dir)} ${fmt(home.wind_speed, 0)}`],
+      ["time", sky.utc_offset == null ? "–" : new Date(Date.now() + sky.utc_offset * 1000).toISOString().slice(11, 16), new Date().toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false })],
+    ];
+    for (const [k, here, phs, a, b] of rows) {
+      $("x-" + k).textContent = here; $("c-" + k).textContent = phs;
+      $("x-" + k).className = a != null && b != null && a !== b ? (a > b ? "worse" : "better") : ""; // red = dirtier than PHS
+    }
+    $("x-compare").textContent = home.us_aqi && sky.us_aqi != null
+      ? (sky.us_aqi > home.us_aqi * 1.1 ? `AIR HERE IS ${(sky.us_aqi / home.us_aqi).toFixed(1)}× THE AQI OVER PHS RIGHT NOW.`
+        : sky.us_aqi < home.us_aqi * 0.9 ? `AIR HERE IS CLEANER THAN OVER PHS RIGHT NOW.` : `AIR HERE IS ABOUT THE SAME AS OVER PHS RIGHT NOW.`)
+      : "";
+    $("x-status").textContent = "TAP ANOTHER SPOT, OR JUMP TO A REGION ABOVE.";
+    Globe.dropPin(lat, lon, cat.color);
+    const hz = hazeOf(sky);
+    Globe.setSky({ haze: hz, wind: sky.wind_speed, night: sky.is_day === 0, cloud: sky.cloud_cover });
+    SkyAudio.setSky({ wind: sky.wind_speed, haze: hz });
+    gsap.fromTo("#explore-card", { opacity: 0.4 }, { opacity: 1, duration: 0.5 });
+  } catch (e) {
+    $("x-status").textContent = "COULDN'T READ THAT SKY (" + e.message + "). TRY AGAIN IN A MOMENT.";
+  }
 }
-poll(); setInterval(poll, 2000);
-refreshHistory().catch(() => {}); setInterval(() => refreshHistory().catch(() => {}), 30000);
+// ---------- local: analyze any point near PHS ----------
+function kmBetween(a, b, c, d) {
+  const p = Math.PI / 180, h = Math.sin((c - a) * p / 2) ** 2 + Math.cos(a * p) * Math.cos(c * p) * Math.sin((d - b) * p / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+function bearingDeg(a, b, c, d) {
+  const p = Math.PI / 180, y = Math.sin((d - b) * p) * Math.cos(c * p);
+  const x = Math.cos(a * p) * Math.sin(c * p) - Math.sin(a * p) * Math.cos(c * p) * Math.cos((d - b) * p);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+let localPick = null, firesList = null;
+const CAMPUS_KM = 25;
+LocalMap.onAnalyze(async (lat, lon) => {
+  if (activeTab !== "local") { selectTab.keepView = true; selectTab("local"); }
+  const [plat, plon] = LocalMap.PHS, km = kmBetween(plat, plon, lat, lon);
+  if (km > CAMPUS_KM) {
+    localPick = null;
+    $("local-card").hidden = true;
+    $("local-out").hidden = false;
+    $("lo-dist").textContent = `${km.toFixed(0)} KM ${LocalSky.compass(bearingDeg(plat, plon, lat, lon))} OF PHS`;
+    $("btn-to-earth").onclick = () => { selectTab("explore"); Globe.flyTo(lat, lon); explore(lat, lon); };
+    return;
+  }
+  $("local-out").hidden = true;
+  localPick = { lat, lon };
+  $("local-card").hidden = false;
+  $("l-coords").textContent = `${lat.toFixed(3)}°, ${lon.toFixed(3)}° · ${km < 1 ? "AT PHS" : km.toFixed(1) + " KM " + LocalSky.compass(bearingDeg(plat, plon, lat, lon)) + " OF PHS"}`;
+  $("l-place").textContent = "Reading the air…";
+  $("l-around").textContent = "Scanning OpenStreetMap for roads, parks and industry nearby (can take ~10 s)…";
+  $("l-fire").textContent = "…";
+  const same = () => localPick && localPick.lat === lat && localPick.lon === lon;
+  // surroundings come from a separate (slower) OpenStreetMap query, so they fill in on their own
+  LocalSky.surroundings(lat, lon).then((a) => {
+    if (!same()) return;
+    const road = a.nearestRoad;
+    $("l-around").innerHTML =
+      (road ? `Nearest major road: <b>${road.name}</b> ~${Math.round(road.m / 10) * 10} m away` + (a.roadNames.length > 1 ? ` (also ${a.roadNames.slice(1).join(", ")})` : "") + "." : "No major roads within 1 km.") +
+      ` <b>${a.green}</b> parks/green areas, <b>${a.industrial}</b> industrial areas, <b>${a.schools}</b> schools.` +
+      (road && road.m < 200 ? ` <span class="risk">Within 200 m of a major road, traffic pollution (NO₂, fine particles) is usually higher than the model grid shows.</span>` : "");
+  }).catch((e) => { if (same()) $("l-around").textContent = "OpenStreetMap lookup unavailable right now (" + e.message + ")."; });
+
+  // nearest NASA fire detection (from the list the Pi downloaded)
+  if (firesList && firesList.length) {
+    const near = firesList.map((f) => ({ ...f, d: kmBetween(lat, lon, f.lat, f.lon) })).sort((a, b) => a.d - b.d)[0];
+    $("l-fire").innerHTML = `<b>${near.d.toFixed(1)} km ${LocalSky.compass(bearingDeg(lat, lon, near.lat, near.lon))}</b> of this spot, ` +
+      `detected ${near.date} (${near.frp} MW, ${near.confidence} confidence). ` +
+      `${firesList.filter((f) => kmBetween(lat, lon, f.lat, f.lon) <= 25).length} detections within 25 km in the last 7 days.`;
+  } else $("l-fire").textContent = serverMode ? "No fire detections loaded." : "Fire data comes from the SkyWindow device. Open the site from the Pi to see it.";
+
+  try {
+    const r = await LocalSky.skyAt(lat, lon);
+    if (!same()) return;
+    const sky = r.sky, v = r.verdict, w = LocalSky.describeWeather(sky.weather_code);
+    $("l-place").textContent = r.place || "Selected point";
+    $("l-verdict").textContent = v.label;
+    $("local-card").style.setProperty("--x", v.color);
+    $("l-cat").textContent = r.category.label + (r.cause ? " · " + r.cause : "");
+    $("l-cat").style.setProperty("--c", r.category.color);
+    $("l-aqi").textContent = fmt(sky.us_aqi);
+    $("l-pm").textContent = fmt(sky.pm2_5, 1);
+    $("l-pm10").textContent = fmt(sky.pm10, 1);
+    $("l-o3").textContent = fmt(sky.ozone, 0);
+    $("l-no2").textContent = fmt(sky.no2, 1);
+    $("l-so2").textContent = fmt(sky.so2, 1);
+    $("l-co").textContent = fmt(sky.co, 0);
+    $("l-aod").textContent = fmt(sky.aod, 2);
+    $("l-uv").textContent = fmt(sky.uv_index, 1);
+    $("l-cond").textContent = `${w.icon} ${w.text}`;
+    $("l-temp").textContent = `${fmt(sky.temperature, 0, "°")} / ${fmt(sky.feels_like, 0, "°C")}`;
+    $("l-hum").textContent = fmt(sky.humidity, 0, "%");
+    $("l-dew").textContent = fmt(sky.dew_point, 0, "°C");
+    $("l-wind").textContent = `${LocalSky.compass(sky.wind_dir)} ${fmt(sky.wind_speed, 0)}/${fmt(sky.wind_gusts, 0)} km/h`;
+    $("l-rain").textContent = fmt(sky.precipitation, 1, " mm");
+    $("l-press").textContent = fmt(sky.pressure, 0, " hPa");
+    $("l-vis").textContent = sky.visibility == null ? "–" : (sky.visibility / 1000).toFixed(1) + " km";
+    $("l-elev").textContent = fmt(sky.elevation, 0, " m");
+    LocalMap.setPickColor(r.category.color);
+    gsap.fromTo("#local-card", { opacity: 0.4 }, { opacity: 1, duration: 0.4 });
+  } catch (e) { $("l-place").textContent = "Couldn't read this spot (" + e.message + ")"; }
+});
+document.querySelectorAll("[data-layer]").forEach((b) => (b.onclick = () => {
+  b.classList.toggle("on");
+  LocalMap.toggle(b.dataset.layer, b.classList.contains("on"));
+}));
+document.querySelectorAll("[data-base]").forEach((b) => (b.onclick = () => {
+  document.querySelectorAll("[data-base]").forEach((x) => x.classList.toggle("on", x === b));
+  LocalMap.setBase(b.dataset.base);
+}));
+document.querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => LocalMap.view(b.dataset.view)));
+
+async function loadFires() {
+  if (!serverMode) {
+    $("fire-summary").textContent = "Satellite fire data is fetched by the SkyWindow device. Open this site from the Pi (http://<pi-ip>:8000) to see recent fires near PHS.";
+    return;
+  }
+  if (loadFires.done) return;
+  try {
+    const d = await api("api/fires");
+    firesList = d.fires;
+    LocalMap.setFires(d.fires);
+    const f = d.summary, n = f.nearest;
+    $("fire-summary").innerHTML =
+      `<b>${f.within_50km}</b> detections within 50 km and <b>${f.within_100km}</b> within 100 km in the last 7 days (${f.within_300km} within 300 km).` +
+      (n ? ` Nearest: <b>${n.km} km ${LocalSky.compass(n.bearing)}</b> on ${n.date} (${n.frp} MW).` : "") +
+      ` Largest nearby fire: ${f.largest_frp} MW.<br>` +
+      (f.smoke_risk ? `<span class="risk">Upwind right now: ${f.upwind_count} detections, ${f.upwind_frp_150km} MW within 150 km. Smoke could drift toward PHS.</span>`
+        : f.upwind_count ? `Upwind right now: ${f.upwind_count} small detections. Not enough to expect smoke.` : "None are upwind of PHS right now.");
+    loadFires.done = true;
+  } catch (e) { $("fire-summary").textContent = "NASA fire data unavailable right now (" + e.message + ")."; }
+}
+
+// ---------- world now: live AQI for major cities ----------
+async function loadWorld() {
+  try {
+    const list = await LocalSky.worldNow();
+    Globe.setCities(list);
+    const phs = list.find((c) => c.name.startsWith("Princeton"));
+    const cats = [["GOOD", "#22c55e"], ["MODERATE", "#eab308"], ["SENSITIVE", "#f97316"], ["UNHEALTHY", "#ef4444"], ["VERY UNHEALTHY", "#a855f7"], ["HAZARDOUS", "#9f1239"]];
+    const counts = cats.map((_, lvl) => list.filter((c) => c.category.level === lvl).length);
+    $("dist-bar").innerHTML = counts.map((n, k) => n ? `<div style="width:${100 * n / list.length}%;background:${cats[k][1]}" title="${cats[k][0]}: ${n}"></div>` : "").join("");
+    $("dist-legend").innerHTML = counts.map((n, k) => n ? `<span style="--c:${cats[k][1]}">${cats[k][0]} ${n}</span>` : "").join("");
+    const sorted = list.map((c) => c.us_aqi).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
+    $("world-summary").textContent = `${list.length} CITIES · MEDIAN AQI ${median}.` + (phs ? ` PHS: AQI ${phs.us_aqi} (${phs.category.label}), ${phs.us_aqi <= median ? "CLEANER THAN" : "WORSE THAN"} THE TYPICAL CITY RIGHT NOW.` : "") +
+      " SOURCE: CAMS ATMOSPHERIC MODEL VIA OPEN-METEO, UPDATED HOURLY. MODEL ESTIMATES CAN DIFFER FROM LOCAL GROUND MONITORS (SEE AIRNOW.GOV FOR STATION READINGS).";
+    $("world-time").textContent = "UPDATED " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (e) {
+    $("world-time").textContent = "WORLD DATA UNAVAILABLE (" + e.message + ")";
+  }
+}
+setInterval(loadWorld, 600000);
+
+document.querySelectorAll("[data-region]").forEach((b) => (b.onclick = () => {
+  const [lat, lon] = b.dataset.region.split(",").map(Number);
+  document.querySelectorAll("[data-region]").forEach((x) => x.classList.toggle("on", x === b));
+  Globe.flyTo(lat, lon);
+}));
+
+Globe.onPick((lat, lon) => { if (!$("hud").hidden) explore(lat, lon); });
+document.querySelectorAll("[data-place]").forEach((b) => (b.onclick = () => {
+  const [lat, lon, name] = b.dataset.place.split(",");
+  document.querySelectorAll("[data-place]").forEach((x) => x.classList.toggle("on", x === b));
+  Globe.flyTo(+lat, +lon);
+  Globe.dropPin(+lat, +lon);
+  explore(+lat, +lon, name);
+}));
+
+boot();

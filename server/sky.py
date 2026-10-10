@@ -8,14 +8,15 @@ import time
 
 import requests
 
-LAT = float(os.environ.get("SKYWINDOW_LAT", "40.3487"))  # Princeton High School
-LON = float(os.environ.get("SKYWINDOW_LON", "-74.6590"))
+LAT = float(os.environ.get("SKYWINDOW_LAT", "40.3587"))  # Princeton High School
+LON = float(os.environ.get("SKYWINDOW_LON", "-74.6560"))
 CACHE_SECONDS = 600
 
 AQ_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 WX_URL = "https://api.open-meteo.com/v1/forecast"
 AQ_VARS = "us_aqi,pm2_5,pm10,ozone,dust,aerosol_optical_depth,uv_index"
-WX_VARS = "temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,shortwave_radiation,is_day"
+WX_VARS = ("temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,cloud_cover,"
+           "wind_speed_10m,wind_gusts_10m,wind_direction_10m,shortwave_radiation,is_day")
 
 _cache = {"at": 0.0, "data": None}
 
@@ -35,7 +36,8 @@ def fetch_sky(force=False):
     try:
         base = {"latitude": LAT, "longitude": LON, "timezone": "auto", "forecast_days": 2}
         aq = _get(AQ_URL, {**base, "current": AQ_VARS, "hourly": "us_aqi,pm2_5,aerosol_optical_depth"})
-        wx = _get(WX_URL, {**base, "current": WX_VARS, "hourly": "cloud_cover,wind_direction_10m,wind_speed_10m"})
+        wx = _get(WX_URL, {**base, "current": WX_VARS,
+                           "hourly": "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability"})
         cur = {**aq["current"], **wx["current"]}
         data = {
             "time": cur.get("time"),
@@ -47,6 +49,11 @@ def fetch_sky(force=False):
             "aod": cur.get("aerosol_optical_depth"),
             "uv_index": cur.get("uv_index"),
             "temperature": cur.get("temperature_2m"),
+            "feels_like": cur.get("apparent_temperature"),
+            "humidity": cur.get("relative_humidity_2m"),
+            "precipitation": cur.get("precipitation"),
+            "weather_code": cur.get("weather_code"),
+            "wind_gusts": cur.get("wind_gusts_10m"),
             "cloud_cover": cur.get("cloud_cover"),
             "wind_speed": cur.get("wind_speed_10m"),
             "wind_dir": cur.get("wind_direction_10m"),
@@ -59,6 +66,8 @@ def fetch_sky(force=False):
                 "aod": aq["hourly"]["aerosol_optical_depth"],
                 "cloud_cover": wx["hourly"]["cloud_cover"],
                 "wind_dir": wx["hourly"]["wind_direction_10m"],
+                "temperature": wx["hourly"]["temperature_2m"],
+                "precip_prob": wx["hourly"]["precipitation_probability"],
             },
             "source": "live",
             "fetched_at": now,

@@ -1,4 +1,4 @@
-"""AI "captain's report": turns the live state + forecast into a short spoken briefing.
+"""AI announcement: turns the live state + forecast into one or two spoken sentences for a classroom.
 
 Uses Google Gemini (free key from https://aistudio.google.com) when GEMINI_API_KEY is set;
 otherwise falls back to a template so the demo never breaks.
@@ -62,11 +62,11 @@ def _facts(state):
     return "\n".join(lines)
 
 
-PROMPT = """You are the cheerful airline captain of "SkyWindow", a windowsill device that tells a
-student whether to open their window. Using ONLY the facts below, write a spoken announcement of
-2-4 short sentences (under 70 words). Start with "This is your captain speaking." Give the
-window advice first, mention what the sky is doing (wind direction, haze/smoke, clouds) and, if
-given, the best time to air the room out. No markdown, no emojis, no made-up numbers.
+PROMPT = """You are SkyWindow, a device at Princeton High School that tells classrooms whether to open
+their windows. Using ONLY the facts below, write a short spoken announcement for a classroom: 1-3
+sentences, under 45 words, friendly and clear. Give the window advice first, then the main reason
+from the sky (haze/smoke, AQI or wind) and, if given, the best time to air the room out.
+No markdown, no emojis, no made-up numbers.
 
 FACTS:
 {facts}
@@ -79,13 +79,13 @@ def template_report(state):
     bw = best_window(sky)
     wind = f"Winds are {sky.get('wind_speed')} kilometers per hour from the {WIND_WORDS[compass(sky.get('wind_dir'))]}"
     advice = {
-        "open": "the sky outside is cleaner than your room, so open the window.",
-        "either": "inside and outside air are about the same, so it's your call.",
-        "shut": "the sky is hazy with pollution, so please keep your window shut.",
-        "ventilate": "the air in your room just spiked, so ventilate right away.",
+        "open": "the air outside is cleaner than in here, so open the windows.",
+        "either": "inside and outside air are about the same, so windows are your call.",
+        "shut": "the sky is hazy with pollution, so please keep the windows shut.",
+        "ventilate": "the air in this room just spiked, so ventilate right away.",
         "warmup": "our sensors are still warming up.",
     }[v["key"]]
-    text = f"This is your captain speaking: {advice} {wind}, and outdoor air quality index is {sky.get('us_aqi')}."
+    text = f"SkyWindow update: {advice} Outdoor air quality index is {sky.get('us_aqi')}. {wind}."
     if bw and v["key"] != "warmup":
         if bw["start"][:13] == (sky.get("time") or "")[:13]:
             text += " Right now is the best time all day to air out."

@@ -13,7 +13,7 @@ On **June 7, 2023**, wildfire smoke from Canada turned Princeton's sky orange. T
 | 🔴 | **KEEP IT SHUT** | Smoke, haze, ozone or particles in the sky (AQI > 100, PM2.5 > 35, or heavy haze) |
 | 🟣 | **VENTILATE NOW** | Your room just spiked (cleaners, markers, cooking, sanitizer) |
 
-An AI "captain" then announces it: *"This is your captain speaking. Winds from the northwest are carrying haze…"*
+Press **🔊 Announce** and it reads the verdict aloud to the classroom: *"SkyWindow update: the sky is hazy with pollution, so please keep the windows shut…"*
 
 ## How it connects to the sky
 
@@ -24,11 +24,33 @@ An AI "captain" then announces it: *"This is your captain speaking. Winds from t
 
 ## AI
 
-- **Captain's announcement (GenAI).** Google Gemini turns the live facts into a short spoken briefing. The facts are the verdict, AQI, haze, wind and the cleanest 2-hour window in the forecast. The prompt only allows facts we pass in, so it can't make up numbers.
+- **Classroom announcement (GenAI).** Google Gemini turns the live facts into one or two spoken sentences. The facts are the verdict, AQI, haze, wind and the cleanest 2-hour window in the forecast. The prompt only allows facts we pass in, so it can't make up numbers.
 - **Voice (ElevenLabs).** The briefing is read aloud by an ElevenLabs voice, in the browser or through the device's own speaker. With `SKYWINDOW_AUTO_ANNOUNCE=1` the device announces every time the verdict changes.
 - **Indoor event classifier (trained by us).** We recorded labeled sensor data during the hackathon: normal air, chemicals (hand sanitizer or markers), breath, and a covered light sensor. We trained a random forest (`ml/train.py`) on it. The dashboard shows what it thinks is happening in the room.
 
 **Honesty note:** the Grove Air Quality v1.3 is a VOC gas sensor with **relative** output. We never call its reading AQI. It becomes a 0–100 "stale index" measured against the room's own clean-air baseline. The outdoor AQI comes from real atmospheric data.
+
+## The website
+
+`web/` is an interactive site. It opens on a loading screen with a draggable 3D globe, then the camera flies down to Princeton. The atmosphere glows blue or turns smoke-orange with the live haze. Generated wind audio follows the real wind speed (best with headphones). There are five tabs:
+
+1. **Now:** after the flight from space, the globe hands off to a close **satellite view of Princeton** with the SkyWindow device marker at PHS. The panel shows the verdict, outside (sky) vs inside (classroom) readings, current weather at PHS (conditions, temperature/feels-like, humidity, wind/gusts, rain), recent fires, and the 🔊 Announce button.
+2. **PHS Campus** (local, within 25 km): zooms in on **Princeton High School** itself. You get the Raspberry Pi's live inside-the-school readings (stale index, trend, raw air sensor, light at the window, device status) next to the outside air and weather. The device marker on the map carries the same live card. Click anywhere to check that spot's air and weather. You can switch between satellite and map and toggle NASA fires and the model AQI grid.
+3. **Forecast:** the next 24 hours of AQI, haze and clouds, plus the wind compass and sun data.
+4. **Earth** (global context): city dots on the 3D globe in EPA colors, a breakdown of how many of 43 cities are Good, Moderate, Unhealthy and so on, the median AQI, and region jumps. Tap anywhere for a **side-by-side comparison with PHS** (AQI, PM2.5, haze, weather, temperature, humidity, wind, local time). Earth never shows the classroom sensor or a windows verdict. Those belong to PHS Campus, and clicks more than 25 km from PHS on the campus map are sent to Earth.
+5. **2023 Record:** the real recorded atmosphere of June 7, 2023 (Canadian wildfire smoke over NJ), clearly labeled as historical.
+6. **System:** how SkyWindow works.
+
+**Real alerts:**
+- A red banner appears if the air over PHS is actually unhealthy (AQI > 100). It shows the EPA category, the likely cause and the EPA's health guidance.
+- An orange **Fire Watch** banner appears if NASA satellites see sizeable fires *upwind* of PHS (≥ 30 MW within 150 km). In that case an "open" verdict becomes "either way", because smoke could drift in.
+
+**Fires (NASA FIRMS):** the Pi downloads the public VIIRS active-fire file every hour and keeps detections within 300 km of PHS, dropping low-confidence points. It works out which ones are upwind from the live wind direction. These detections include small crop and brush burns and some industrial heat sources, so the site reports their size (fire radiative power) and only warns when the upwind fire power is significant.
+
+The site runs in one of two modes:
+
+- **Device mode:** served by the Pi at `http://<pi-ip>:8000`, using its live sensors.
+- **Showcase mode:** opened anywhere without the Pi. For example, serve `web/` from any static host, or run `python -m http.server -d web`. The page fetches the sky straight from Open-Meteo and simulates the room sensor, so judges can try it on their own phones.
 
 ## Hardware
 
@@ -36,7 +58,7 @@ An AI "captain" then announces it: *"This is your captain speaking. Winds from t
 - Grove Air Quality Sensor v1.3 → **A0**
 - Grove Light Sensor → **A2** (facing the window)
 - Grove LCD RGB Backlight → **I2C**
-- *(optional)* a speaker on the Pi's audio jack or USB for the captain's voice
+- *(optional)* a speaker on the Pi's audio jack or USB for spoken announcements
 
 ## Architecture
 
@@ -46,7 +68,7 @@ An AI "captain" then announces it: *"This is your captain speaking. Winds from t
  Open-Meteo ────► server/sky.py ─┤        │                         └─► web/ dashboard (phone, any browser)
  2023 replay ───► server/replay.py┘        ├─► server/decide.py   (verdict engine)
                                           ├─► server/clarity.py  (sun position, clear-sky, Beer-Lambert)
-                                          ├─► server/report.py   (Gemini captain's report)
+                                          ├─► server/report.py   (Gemini classroom announcement)
                                           ├─► server/voice.py    (ElevenLabs TTS)
                                           └─► server/store.py    (SQLite history + labels) ──► ml/train.py
 ```
@@ -84,7 +106,7 @@ python scripts/dev.py             # http://localhost:8000  - use the "Mock" butt
 |---|---|---|
 | GET | `/api/now` | Full live state: verdict, indoor, sky, clarity, replay |
 | GET | `/api/history?minutes=60` | Logged readings |
-| POST | `/api/report` `{"speak": true}` | Generate the captain's report (+ ElevenLabs audio) |
+| POST | `/api/report` `{"speak": true}` | Generate the spoken announcement (+ ElevenLabs audio) |
 | POST | `/api/replay` `{"on": true}` | Start or stop the Smoke Day replay |
 | POST | `/api/calibrate` `{"what": "air"\|"light"}` | Set the clean-air baseline, or calibrate the light sensor to the sky |
 | POST | `/api/label` `{"label": "chemical"}` | Record a labeled sample for the classifier |
@@ -97,4 +119,5 @@ python scripts/dev.py             # http://localhost:8000  - use the "Mock" butt
 
 ## Credits
 
-Sky data: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0), CAMS air-quality and ERA5 reanalysis. Built in 24 hours at hackPHS 2026.
+Sky data: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0), CAMS air-quality and ERA5 reanalysis.
+The 3D Earth is adapted from [TerraShift](https://github.com/Flotrpy/TerraShift)'s EarthGlobe (MIT License, Copyright (c) 2026 TerraShift). Its imagery is NASA Blue Marble, served from the three.js example textures. Built in 24 hours at hackPHS 2026.

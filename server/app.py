@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from device.hw import Smoother, get_sensors
 from device.lcd import get_lcd
 from ml.features import features
-from server import clarity, report, store, voice
+from server import clarity, fires as firewatch, report, store, voice
 from server.decide import decide
 from server.replay import Replay
 from server.sky import LAT, LON, compass, fetch_sky
@@ -62,6 +62,12 @@ def sky_loop():
         time.sleep(60)
 
 
+def fire_loop():
+    while True:
+        firewatch.fetch_fires(LAT, LON)  # cached for an hour inside
+        time.sleep(600)
+
+
 def sensor_loop():
     last_log, last_key = 0.0, None
     while True:
@@ -84,7 +90,8 @@ def sensor_loop():
                 when = datetime.fromisoformat(sky["time"]).replace(tzinfo=timezone.utc) + timedelta(hours=4)
             light_k = None if replay_info else store.get_setting("light_k")  # live sensor != 2023 sky
             clar = clarity.compute(LAT, LON, sky, light, light_k, when)
-            verdict = decide(air, baseline, rate, sky, warming)
+            fire_info = None if replay_info else firewatch.summarize(firewatch._cache["fires"], (sky or {}).get("wind_dir"))
+            verdict = decide(air, baseline, rate, sky, warming, fire_info)
 
             event = None
             if model is not None and not warming:
@@ -102,7 +109,7 @@ def sensor_loop():
 
             state.update({
                 "time": now, "verdict": verdict, "sky": sky, "clarity": clar, "replay": replay_info,
-                "event": event, "mock": sensors.mock,
+                "event": event, "mock": sensors.mock, "fires": fire_info,
                 "indoor": {"air": round(air, 1), "light": round(light, 1), "baseline": baseline,
                            "rate_per_min": round(rate, 1), "stale_index": verdict["stale_index"],
                            "warming_up": warming},
@@ -142,6 +149,7 @@ app = FastAPI(title="SkyWindow")
 def _start():
     threading.Thread(target=sky_loop, daemon=True).start()
     threading.Thread(target=sensor_loop, daemon=True).start()
+    threading.Thread(target=fire_loop, daemon=True).start()
 
 
 @app.get("/api/now")
@@ -181,6 +189,14 @@ def api_replay(payload: dict = Body(default={})):
     else:
         replay.stop()
     return {"replay": replay.active}
+
+
+@app.get("/api/fires")
+def api_fires():
+    fires = firewatch.fetch_fires(LAT, LON)
+    if fires is None:
+        raise HTTPException(503, "NASA FIRMS unavailable")
+    return {"summary": firewatch.summarize(fires, (state.get("sky") or {}).get("wind_dir")), "fires": fires}
 
 
 @app.post("/api/calibrate")

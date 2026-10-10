@@ -15,8 +15,9 @@
 2. **The device (15 s).** It sits on the windowsill. *"SkyWindow watches the sky above you and the air in your room, and gives you one answer."* Point at the green LCD showing **OPEN THE WINDOW**.
 3. **Indoor spike (20 s).** Open the sanitizer next to the sensor. Within seconds it turns purple: **VENTILATE NOW**.
 4. **The sky (30 s).** Show the phone dashboard: live AQI, smoke haze, the wind arrow, and **sunbeam through haze**. *"It uses the Beer–Lambert law to show how much sunlight gets through the haze overhead."* Cover the light sensor to show the sky-clarity reading drop.
-5. **Smoke Day replay (30 s).** Press *Start replay*. The sky turns orange and the LCD turns red: **KEEP IT SHUT**. Press *Brief me*, and the captain announces it.
-6. **Close (10 s).** *"AQI apps tell you about outside. SkyWindow compares the sky with your room and tells you what to do about it."*
+5. **Smoke Day replay (30 s).** Press *Start replay*. The sky turns orange and the LCD turns red: **KEEP IT SHUT**. Press **🔊 Announce** and it reads the warning aloud.
+6. **PHS Campus + Earth (25 s).** Open PHS CAMPUS and click a spot near PHS (e.g. downtown Trenton). Show its AQI and weather, then point at the orange NASA fire dots: *"These are satellite fire detections from this week. SkyWindow checks if any are upwind of PHS."* Then open EARTH and tap New Delhi. The side-by-side shows how its air compares with ours right now.
+7. **Close (10 s).** *"AQI apps tell you about outside. SkyWindow compares the sky with your room and tells you what to do about it."*
 
 ## Likely judge questions
 - **Is the AI real?** Gemini writes the briefing from real data only. We also trained a random-forest classifier on sensor data we labeled here (see the accuracy from `ml/train.py`).

@@ -1,5 +1,5 @@
 """Download the June 7, 2023 Canadian-wildfire smoke day over Princeton, NJ from Open-Meteo
-(historical CAMS air-quality model + ERA5 weather archive) into data/smoke_day_2023.json.
+(historical CAMS air-quality model + ERA5 weather archive) into web/smoke_day_2023.json (bundled with the site).
 
     python scripts/fetch_smoke_day.py
 """
@@ -8,9 +8,9 @@ from pathlib import Path
 
 import requests
 
-LAT, LON = 40.3487, -74.6590
+LAT, LON = 40.3587, -74.6560
 DAY = "2023-06-07"
-OUT = Path(__file__).resolve().parents[1] / "data" / "smoke_day_2023.json"
+OUT = Path(__file__).resolve().parents[1] / "web" / "smoke_day_2023.json"
 
 aq = requests.get("https://air-quality-api.open-meteo.com/v1/air-quality", params={
     "latitude": LAT, "longitude": LON, "start_date": DAY, "end_date": DAY, "timezone": "America/New_York",
