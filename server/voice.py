@@ -1,4 +1,4 @@
-"""ElevenLabs text-to-speech for the captain's announcement.
+"""ElevenLabs text-to-speech for SkyWindow's spoken announcements.
 
 Set ELEVENLABS_API_KEY (and optionally ELEVENLABS_VOICE_ID). Audio is cached by text hash in
 data/audio/. If `mpg123` is installed on the Pi and a speaker is connected, play_local() plays it

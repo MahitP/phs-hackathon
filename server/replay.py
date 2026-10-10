@@ -5,7 +5,7 @@ import json
 import time
 from pathlib import Path
 
-DATA = Path(__file__).resolve().parents[1] / "data" / "smoke_day_2023.json"
+DATA = Path(__file__).resolve().parents[1] / "web" / "smoke_day_2023.json"  # served to the browser too
 SECONDS_PER_HOUR = 4.0
 START_HOUR = 8  # start the morning before the afternoon "orange sky" peak
 
@@ -21,7 +21,7 @@ class Replay:
 
     def start(self):
         if not self.data:
-            raise RuntimeError("data/smoke_day_2023.json missing - run scripts/fetch_smoke_day.py")
+            raise RuntimeError("web/smoke_day_2023.json missing - run scripts/fetch_smoke_day.py")
         self.started = time.time()
 
     def stop(self):

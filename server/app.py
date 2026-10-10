@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from device.hw import RollingMin, Smoother, get_sensors
 from device.lcd import get_lcd
 from ml.features import N_FEATURES, features
-from server import clarity, report, sky as skydata, store, voice
+from server import clarity, fires as firewatch, report, sky as skydata, store, voice
 from server.decide import decide
 from server.replay import Replay
 from server.sky import LAT, LON, compass
@@ -81,6 +81,12 @@ def sky_loop():
         time.sleep(30)
 
 
+def fire_loop():
+    while True:
+        firewatch.fetch_fires(LAT, LON)  # cached for an hour inside
+        time.sleep(600)
+
+
 def sensor_loop():
     last_log, last_key, last_announce, saved_baseline = 0.0, None, 0.0, store.get_setting("air_baseline")
     if saved_baseline is not None:
@@ -111,7 +117,8 @@ def sensor_loop():
                 # ERA5 sunlight for June 7 2023 barely drops under the smoke (86-96% "clear" at midday),
                 # so it would contradict the orange sky; the dashboard shows haze transmission instead.
                 clar["model_clarity"] = None
-            verdict = decide(air, baseline, rate, sky, warming, prev=state["verdict"])
+            fire_info = None if replay_info else firewatch.summarize(firewatch._cache["fires"], (sky or {}).get("wind_dir"))
+            verdict = decide(air, baseline, rate, sky, warming, fires=fire_info, prev=state["verdict"])
 
             event = None
             if model is not None and not warming:
@@ -133,7 +140,7 @@ def sensor_loop():
 
             state.update({
                 "time": now, "verdict": verdict, "sky": sky, "clarity": clar, "replay": replay_info,
-                "event": event, "mock": sensors.mock,
+                "event": event, "mock": sensors.mock, "fires": fire_info,
                 "indoor": {"air": round(air, 1), "light": round(light, 1), "baseline": baseline,
                            "rate_per_min": round(rate, 1), "stale_index": verdict["stale_index"],
                            "warming_up": warming},
@@ -183,6 +190,7 @@ def require_token(x_skywindow_token: Optional[str] = Header(default=None)):
 async def lifespan(_app):
     threading.Thread(target=sky_loop, daemon=True).start()
     threading.Thread(target=sensor_loop, daemon=True).start()
+    threading.Thread(target=fire_loop, daemon=True).start()
     yield
 
 
@@ -227,6 +235,14 @@ def api_replay(payload: dict = Body(default={})):
     else:
         replay.stop()
     return {"replay": replay.active}
+
+
+@app.get("/api/fires")
+def api_fires():
+    fires = firewatch.fetch_fires(LAT, LON)
+    if fires is None:
+        raise HTTPException(503, "NASA FIRMS unavailable")
+    return {"summary": firewatch.summarize(fires, (state.get("sky") or {}).get("wind_dir")), "fires": fires}
 
 
 @app.post("/api/calibrate", dependencies=writes)

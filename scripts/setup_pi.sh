@@ -19,7 +19,7 @@ pip install -r requirements.txt
 pip install git+https://github.com/Seeed-Studio/grove.py@15505cb15014a19c30a02ddbef239eaa0a784ee3
 
 [ -f .env ] || cp .env.example .env
-[ -f data/smoke_day_2023.json ] || python scripts/fetch_smoke_day.py
+[ -f web/smoke_day_2023.json ] || python scripts/fetch_smoke_day.py
 
 echo "== I2C devices (expect 04 = Base HAT, 3e = LCD text, 62 or 30 = LCD backlight) =="
 sudo i2cdetect -y 1 || true

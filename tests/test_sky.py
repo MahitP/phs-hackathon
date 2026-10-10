@@ -7,7 +7,8 @@ AQ = {"current": {"time": "2026-10-10T12:00", "us_aqi": 30, "pm2_5": 5, "pm10": 
       "hourly": {"time": ["2026-10-10T12:00"], "us_aqi": [30], "pm2_5": [5], "aerosol_optical_depth": [0.1]}}
 WX = {"current": {"temperature_2m": 15, "cloud_cover": 20, "wind_speed_10m": 9, "wind_direction_10m": 315,
                   "shortwave_radiation": 400, "is_day": 1},
-      "hourly": {"cloud_cover": [20], "wind_direction_10m": [315], "wind_speed_10m": [9]}}
+      "hourly": {"cloud_cover": [20], "wind_direction_10m": [315], "wind_speed_10m": [9], "temperature_2m": [15],
+                 "precipitation_probability": [0]}}
 
 
 @pytest.fixture(autouse=True)
