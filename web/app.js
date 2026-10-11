@@ -341,6 +341,7 @@ function showHour(i) {
   $("r-pm").textContent = fmt(h.pm2_5, 1);
   $("r-wind").textContent = `${LocalSky.compass(h.wind_dir)} ${fmt(h.wind_speed, 0)}`;
   $("r-verdict").textContent = v.label;
+  $("replay-mini").innerHTML = `${h.time.slice(11, 16)} · AQI <b style="color:${LocalSky.aqiCategory(h.us_aqi).color}">${fmt(h.us_aqi)}</b> · <b style="color:${v.color}">${v.label}</b>`;
   $("r-verdict").style.color = v.color;
   document.querySelectorAll("#scrub-bars div").forEach((d, j) => d.classList.toggle("on", j <= i));
   Globe.setSky({ haze: hazeOf(h), wind: h.wind_speed, night: i < 6 || i > 20, cloud: h.cloud_cover });
@@ -352,6 +353,16 @@ function showHour(i) {
   SkyAudio.setSky({ wind: h.wind_speed, haze: hazeOf(h) });
 }
 $("scrub").oninput = (e) => showHour(+e.target.value);
+// minimize the 2023 box to a one-line strip so the New Jersey map stays visible
+$("btn-replay-min").onclick = () => {
+  const min = $("tab-replay").classList.toggle("min");
+  $("btn-replay-min").textContent = min ? "+" : "–";
+  $("btn-replay-min").title = min ? "Expand this box" : "Minimize this box";
+  $("btn-replay-min").setAttribute("aria-expanded", String(!min));
+  try { localStorage.setItem("skywindow-replay-min", min ? "1" : "0"); } catch (e) {}
+  if (activeTab === "replay") LocalMap.view("nj", false); // re-fit NJ into the space the box now leaves
+};
+try { if (localStorage.getItem("skywindow-replay-min") === "1") $("btn-replay-min").click(); } catch (e) {}
 $("btn-replay").onclick = async () => {
   const on = !(latest && latest.replay);
   try {

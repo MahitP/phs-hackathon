@@ -8,7 +8,7 @@
   <!-- Libraries, fonts and Earth textures are bundled in vendor/ so the site works without internet (see vendor/README.md) -->
   <link rel="stylesheet" href="vendor/fonts/fonts.css">
   <link rel="stylesheet" href="vendor/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
   <script src="vendor/three.min.js"></script>
   <script src="vendor/gsap.min.js"></script>
   <script src="vendor/chart.umd.min.js"></script>
@@ -216,12 +216,19 @@
 
       <!-- 03 REPLAY -->
       <section class="panel" id="tab-replay" role="tabpanel" hidden>
-        <div class="mono label">HISTORICAL RECORD · 2023-06-07 · NOT CURRENT CONDITIONS</div>
-        <h2>The day the sky turned orange</h2>
-        <p>On June 7, 2023, smoke from Canadian wildfires drifted over New Jersey and gave Princeton some of its worst air on record. This is the real recorded atmosphere for that day (CAMS air-quality model and ERA5 weather via Open-Meteo). Drag through the hours to see what SkyWindow would have told PHS. For what's happening right now, see <b>NOW</b> and <b>PHS CAMPUS</b>.</p>
-        <div id="scrub-bars" aria-hidden="true"></div>
+        <div class="replay-head">
+          <div class="mono label">HISTORICAL RECORD · 2023-06-07 · NOT CURRENT CONDITIONS</div>
+          <button class="icon mono" id="btn-replay-min" aria-expanded="true" title="Minimize this box">–</button>
+        </div>
+        <h2 class="replay-full">The day the sky turned orange</h2>
+        <details class="replay-full about">
+          <summary class="mono">ABOUT THIS DAY</summary>
+          <p>On June 7, 2023, smoke from Canadian wildfires drifted over New Jersey and gave Princeton some of its worst air on record. This is the real recorded atmosphere for that day (CAMS air-quality model and ERA5 weather via Open-Meteo). Drag through the hours to see what SkyWindow would have told PHS. For what's happening right now, see <b>NOW</b> and <b>PHS CAMPUS</b>.</p>
+        </details>
+        <div class="replay-mini mono" id="replay-mini" aria-live="polite">–</div>
+        <div id="scrub-bars" class="replay-full" aria-hidden="true"></div>
         <input type="range" id="scrub" min="0" max="23" value="8" step="1" aria-label="Hour of June 7, 2023">
-        <div class="grid3 mono">
+        <div class="grid3 mono replay-full">
           <div><div class="label">TIME</div><div class="val" id="r-time">–</div></div>
           <div><div class="label">US AQI</div><div class="val" id="r-aqi">–</div></div>
           <div><div class="label">SMOKE HAZE</div><div class="val" id="r-aod">–</div></div>
@@ -229,7 +236,7 @@
           <div><div class="label">WIND FROM</div><div class="val" id="r-wind">–</div></div>
           <div><div class="label">VERDICT</div><div class="val" id="r-verdict">–</div></div>
         </div>
-        <div class="row">
+        <div class="row replay-full">
           <button class="cta" id="btn-replay">▶ PLAY ON DEVICE</button>
           <span class="mono fine" id="replay-status"></span>
         </div>
@@ -303,10 +310,10 @@
     </footer>
   </div>
 
-  <script src="globe.js?v=9"></script>
-  <script src="audio.js?v=9"></script>
-  <script src="sky-local.js?v=9"></script>
-  <script src="local.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="globe.js?v=10"></script>
+  <script src="audio.js?v=10"></script>
+  <script src="sky-local.js?v=10"></script>
+  <script src="local.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

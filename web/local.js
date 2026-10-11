@@ -127,7 +127,12 @@ const LocalMap = (() => {
   }
   function setPickColor(color) { if (pickMarker) pickMarker.setStyle({ color }); }
 
-  function padding() { return innerWidth > 900 ? [Math.min(620, innerWidth * 0.45), 60] : [0, 60]; }
+  // leave room for whichever panel is showing (measured, so the small 2023 box frees up the map)
+  function padding() {
+    const panel = [...document.querySelectorAll(".panel")].find((p) => !p.hidden);
+    const w = panel && innerWidth > 900 ? panel.getBoundingClientRect().right + 24 : 0;
+    return [Math.min(w || 0, innerWidth * 0.6), 60];
+  }
   function bottomPad() { return innerWidth > 900 ? [20, 40] : [20, innerHeight * 0.5]; } // phone: panel docked at bottom
 
   /** "city" (Princeton), "school" (PHS grounds) or "nj" (New Jersey only, locked). */

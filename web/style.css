@@ -249,3 +249,20 @@ code { font-family: var(--mono); font-size: 0.85em; background: rgba(255,255,255
   text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
 .city-label b { font-weight: 600; }
 
+
+/* 2023 RECORD: compact box that can be minimized so New Jersey stays visible */
+#tab-replay { width: min(400px, 100%); }
+#tab-replay h2 { font-size: 1.1rem; margin: 4px 0 6px; }
+#tab-replay .grid3 { margin: 10px 0; }
+#tab-replay .grid3 > div { padding: 8px 10px; }
+#tab-replay .val { font-size: 0.9rem; }
+#scrub-bars { height: 44px; }
+.replay-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.replay-head .icon { min-width: 28px; line-height: 1; }
+.about summary { cursor: pointer; font-size: 0.62rem; color: var(--muted); letter-spacing: .12em; }
+.about p { font-size: 0.85rem; margin: 6px 0 0; }
+.replay-mini { display: none; font-size: 0.72rem; margin: 6px 0 2px; }
+#tab-replay.min { width: min(320px, 100%); padding: 10px 14px; }
+#tab-replay.min .replay-full { display: none; }
+#tab-replay.min .replay-mini { display: block; }
+#tab-replay.min input[type=range] { margin-top: 4px; }
