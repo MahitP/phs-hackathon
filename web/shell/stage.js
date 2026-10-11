@@ -26,7 +26,9 @@ export function createStage({ canvas, labelRoot, tier }) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = tier !== "low";
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // (?shadow=pcf|basic: a debug switch for measuring shadow cost)
+  const shadowParam = new URLSearchParams(location.search).get("shadow");
+  renderer.shadowMap.type = shadowParam === "basic" ? THREE.BasicShadowMap : shadowParam === "pcf" ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
   const worlds = {}, css = {};
   let post = null, active = null;

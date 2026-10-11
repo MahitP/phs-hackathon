@@ -146,3 +146,10 @@ export function liveMix({ live, now = new Date(), raise = 0 }) {
   beds.traffic = (h >= 7 && h < 9) || (h >= 14 && h < 16) ? 0.6 : 0.12;
   return { beds, outsideGain: win.gain, outsideLowpass: win.lowpass * lerp(1, 0.35, haze), inside: 1, clock: true };
 }
+
+/** the app (a view over Princeton): the same live weather, heard outdoors all around; no room, no clock */
+export function appMix({ live, now = new Date() }) {
+  const m = liveMix({ live, now, raise: 1 });
+  const haze = smooth(range(live?.aod ?? 0, 0.5, 1.2));
+  return { ...m, beds: { ...m.beds, room: 0, hum: 0 }, outsideGain: 0.7, outsideLowpass: 20000 * lerp(1, 0.35, haze), inside: 0, clock: false };
+}

@@ -9,10 +9,10 @@ const SLOW_MS = 21; // median frame time that means "missing 60 fps" (a 120 Hz d
 const CLEAN_MS = 17.6; // median at or under this is a clean 60
 const WINDOW = 45; // frames per judgement
 const SETTLE_S = 1.5; // after a change, let render targets reallocate before judging again
-const PROBE_AFTER_S = 8; // clean seconds before trying a step back up
+const PROBE_AFTER_S = Infinity; // no stepping back up: every step is a visible hitch, and a steady frame rate beats a sharper one
 const PROBE_S = 2.5; // how long a step up has to prove itself
 
-export function createGovernor({ stage, tier, onChange = () => {} }) {
+export function createGovernor({ stage, tier, onChange = () => {}, start = { room: "lowest" } }) {
   const maxPR = stage.renderer.getPixelRatio();
   const minPR = tier === "low" ? Math.min(maxPR, 0.75) : Math.min(maxPR, 1);
   // quality ladder, best first: [pixel ratio, ambient occlusion scale]
@@ -23,7 +23,9 @@ export function createGovernor({ stage, tier, onChange = () => {} }) {
   const worlds = {}; // key -> { level, ceiling }
   let active = null, frames = [], settle = 0, clean = 0, probe = null, applied = null;
 
-  const st = (k) => (worlds[k] ||= { level: 0, ceiling: 0 });
+  // a world can start further down the ladder (the classroom, the heaviest scene, starts at its lowest rung),
+  // so it's steady from its first frame; the change lands at the cloud swap, hidden by the cloud
+  const st = (k) => (worlds[k] ||= { level: start[k] === "lowest" ? ladder.length - 1 : 0, ceiling: 0 });
   function apply(k) {
     const [pr, ao] = ladder[st(k).level];
     const key = pr + ":" + ao;

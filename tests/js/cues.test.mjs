@@ -95,3 +95,17 @@ test("one-shots fire on forward crossings at reading speed, never backwards or w
   assert.deepEqual(crossings(5.2, 5.95, 0.016, marks), [], "a fling (or Watch again) skips them");
   assert.deepEqual(crossings(5.29, 5.29, 0.016, marks), []);
 });
+
+test("the app hears the live weather outdoors: no room tone, no clock, birds by day", async () => {
+  const { appMix } = await import("../../web/shell/audio/cues.js");
+  const day = { sunElevation: 30, aod: 0.1, wind: 12, temp: 18, precip: 0, weatherCode: 1 };
+  const m = appMix({ live: day, now: new Date("2026-10-12T11:00:00-04:00") });
+  assert.equal(m.beds.room, 0);
+  assert.equal(m.beds.hum, 0);
+  assert.equal(m.clock, false);
+  assert.equal(m.inside, 0);
+  assert.ok(m.beds.birds > 0.3, `birds ${m.beds.birds}`);
+  const smoky = appMix({ live: { ...day, aod: 1.4 }, now: new Date("2026-10-12T11:00:00-04:00") });
+  assert.ok(smoky.outsideLowpass < m.outsideLowpass, "smoke muffles the world");
+  assert.equal(appMix({ live: null }).clock, false);
+});

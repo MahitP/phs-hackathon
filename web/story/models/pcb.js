@@ -33,7 +33,7 @@ export function quality(tier) {
     atlas: low ? 1024 : 2048,
     normals: !low, // normal maps from the copper height field
     physical: !low, // MeshPhysicalMaterial + clearcoat
-    transmission: high, // real refraction for clear epoxy and acrylic
+    transmission: false, // real refraction re-renders the whole room every frame; clear coat reads the same at this size
     smd: low ? 0.3 : high ? 1 : 0.75, // share of the fine SMD scatter kept
     fine: !low, // 0201 parts and other sub-millimetre details
     aniso: low ? 2 : 8,

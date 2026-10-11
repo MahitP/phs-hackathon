@@ -61,6 +61,50 @@ const GrainShader = {
     }`,
 };
 
+// The hand-off into the app. uAmt: a tape being rewound (a tracking band rolling up the frame, lines
+// tearing sideways, RGB split, scanlines, the head-switching noise strip at the bottom, washed-out colour),
+// stronger with uSpeed. uZoom: a radial zoom blur toward uCenter for the dive. Runs in display space, last.
+const RewindShader = {
+  uniforms: { tDiffuse: { value: null }, uAmt: { value: 0 }, uSpeed: { value: 0 }, uZoom: { value: 0 }, uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+    uTime: { value: 0 }, uJolt: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } },
+  vertexShader: VS,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse; uniform float uAmt, uSpeed, uZoom, uTime, uJolt; uniform vec2 uCenter, uRes; varying vec2 vUv;
+    float h21(vec2 p) { p = fract(p * vec2(233.34, 851.73)); p += dot(p, p + 23.45); return fract(p.x * p.y); }
+    void main() {
+      vec2 uv = vUv + vec2(0.0, uJolt);
+      vec3 col;
+      if (uAmt > 0.001) {
+        float line = floor(uv.y * uRes.y / 3.0), tick = floor(uTime * 24.0);
+        float jit = h21(vec2(line, tick)) - 0.5;
+        // the tracking band: a few lines tall, rolling up the frame, faster as the tape speeds up
+        float bandY = fract(-uTime * (0.22 + 0.5 * uSpeed));
+        float dy = abs(fract(uv.y - bandY + 0.5) - 0.5);
+        float band = smoothstep(0.07, 0.0, dy);
+        float bottom = smoothstep(0.055, 0.0, uv.y);                  // head-switching noise along the bottom edge
+        float tear = jit * 0.0025 * uAmt * (0.4 + uSpeed) + band * jit * 0.05 * uAmt + bottom * jit * 0.09 * uAmt;
+        tear += band * 0.012 * uAmt * sin(uv.y * 160.0 + uTime * 40.0);
+        vec2 u2 = vec2(uv.x + tear, uv.y);
+        float ca = (0.0025 + 0.006 * uSpeed) * uAmt;
+        col = vec3(texture2D(tDiffuse, u2 + vec2(ca, 0.0)).r, texture2D(tDiffuse, u2).g, texture2D(tDiffuse, u2 - vec2(ca, 0.0)).b);
+        float n = h21(gl_FragCoord.xy * 0.37 + fract(uTime * 13.0) * 97.0);
+        col += band * uAmt * (n * 0.22 - 0.04);                      // the band is bright and noisy
+        col = mix(col, vec3(n * 0.9), bottom * 0.65 * uAmt);
+        col *= 1.0 - 0.11 * uAmt * step(0.5, fract(gl_FragCoord.y * 0.5)); // scanlines
+        float l = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(col, vec3(l), 0.28 * uAmt);                         // tape colour: washed out, a touch warm, lifted blacks
+        col = (col - 0.5) * (1.0 + 0.1 * uAmt) + 0.5;
+        col += vec3(0.025, 0.018, 0.0) * uAmt;
+      } else if (uZoom > 0.001) {
+        vec2 d = uv - uCenter; vec3 acc = vec3(0.0);
+        float j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        for (int i = 0; i < 14; i++) { float f = (float(i) + j) / 14.0; acc += texture2D(tDiffuse, uCenter + d * (1.0 - uZoom * 0.16 * f)).rgb; }
+        col = acc / 14.0;
+      } else col = texture2D(tDiffuse, uv).rgb;
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+};
+
 // Screen-space light shafts: march from each pixel toward the light, gathering bright samples.
 const GodRayShader = {
   uniforms: { tDiffuse: { value: null }, uLight: { value: new THREE.Vector2(0.5, 0.5) }, uStrength: { value: 0 }, uDecay: { value: 0.965 }, uDensity: { value: 0.85 }, uThreshold: { value: 0.9 }, uTint: { value: new THREE.Color(1, 0.9, 0.75) }, uFlare: { value: 0 }, uAspect: { value: 1 } },
@@ -132,6 +176,7 @@ export function createPost(renderer, tier, scene, camera) {
   const smaa = tier !== "high" ? new SMAAPass(size.x * renderer.getPixelRatio(), size.y * renderer.getPixelRatio()) : null;
   const curtain = new ShaderPass(CurtainShader);
   const grain = new ShaderPass(GrainShader);
+  const rewind = new ShaderPass(RewindShader);
 
   composer.addPass(renderPass);
   if (gtao) {
@@ -152,7 +197,9 @@ export function createPost(renderer, tier, scene, camera) {
   if (smaa) composer.addPass(smaa);
   composer.addPass(curtain);
   if (tier === "high") composer.addPass(grain);
+  composer.addPass(rewind);
   curtain.enabled = false;
+  rewind.enabled = false;
 
   const _v = new THREE.Vector3();
   let current = null, aoScale = 1, cssW = size.x, cssH = size.y;
@@ -165,9 +212,10 @@ export function createPost(renderer, tier, scene, camera) {
   };
 
   return {
-    composer, renderPass, bloom, curtain, grain, gtao, bokeh, godrays,
+    composer, renderPass, bloom, curtain, grain, gtao, bokeh, godrays, rewind,
     setSize(w, h) {
       cssW = w; cssH = h;
+      rewind.uniforms.uRes.value.set(w, h);
       composer.setSize(w, h); bloom.resolution.set(w, h); curtain.uniforms.uAspect.value = w / h;
       if (godrays) godrays.uniforms.uAspect.value = w / h;
       sizeAO();
@@ -217,6 +265,13 @@ export function createPost(renderer, tier, scene, camera) {
       if (color) curtain.uniforms.uColor.value.set(color).convertLinearToSRGB(); // this pass runs after OutputPass, in display space
       curtain.uniforms.uTime.value = time;
     },
-    tick(time) { grain.uniforms.uTime.value = time; },
+    tick(time) { grain.uniforms.uTime.value = time; rewind.uniforms.uTime.value = time; },
+    /** the hand-off's look: { amt, speed } for the tape, { zoom, center: [x, y] (0..1, y up) } for the dive, jolt (uv) */
+    setRewind({ amt = 0, speed = 0, zoom = 0, center = null, jolt = 0 } = {}) {
+      const u = rewind.uniforms;
+      u.uAmt.value = amt; u.uSpeed.value = speed; u.uZoom.value = zoom; u.uJolt.value = jolt;
+      if (center) u.uCenter.value.set(center[0], center[1]);
+      rewind.enabled = amt > 0.001 || zoom > 0.001 || Math.abs(jolt) > 1e-5;
+    },
   };
 }

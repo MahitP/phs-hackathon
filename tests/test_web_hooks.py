@@ -1,21 +1,22 @@
-"""Every DOM hook the classic dashboard scripts rely on must exist in web/classic.html.
+"""Every DOM hook the app's scripts rely on must exist in web/index.html (the app lives there as #app).
 
-The scripts find elements by id ($("x"), getElementById, querySelector("#x")) and by data-attribute,
-role and class selectors. If a markup change drops one of them, nothing fails until someone clicks
-the right button, so this test checks the markup statically. Only web/classic.html and web/*.js are
-checked (the shell pages, web/story/, web/shell/, web/live/ and web/vendor/ are covered elsewhere).
+The scripts (web/app/*.js and web/sky-local.js) find elements by id ($("x"), getElementById,
+querySelector("#x")) and by data-attribute, role and class selectors. If a markup change drops one of
+them, nothing fails until someone clicks the right button, so this test checks the markup statically.
+The shell's own modules (web/shell/, web/story/) are covered by test_shell_hooks.py.
 """
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parents[1] / "web"
-APP = WEB / "classic.html"
+APP = WEB / "index.html"
+APP_JS = sorted((WEB / "app").glob("*.js")) + [WEB / "sky-local.js"]
 
 # A string literal that is the whole first argument: "x" followed by ")" or ",", never by "+".
 _LIT = r"""\(\s*(["'])([^"'`]+)\1\s*[,)]"""
 ID_CALL = re.compile(r"(?:(?<![\w$])\$|getElementById)" + _LIT)
-SELECTOR_CALL = re.compile(r"(?:querySelector(?:All)?|closest|matches)" + _LIT)
+SELECTOR_CALL = re.compile(r"(?:querySelector(?:All)?|closest|matches|(?<![\w$])qa)" + _LIT)  # qa: app.js's #app-scoped querySelectorAll
 GSAP_TARGET = re.compile(r"gsap\.(?:to|from|fromTo|set|killTweensOf)" + _LIT)
 # $("x-" + k), getElementById(`...`): ids this test cannot see
 DYNAMIC_ID = re.compile(r"""(?:(?<![\w$])\$|getElementById)\(\s*(?:["'][^"']*["']\s*\+|`)""")
@@ -56,9 +57,9 @@ def _page():
 
 
 def _scripts(page):
-    files = {p.name: p.read_text(encoding="utf-8") for p in sorted(WEB.glob("*.js"))}
+    files = {p.relative_to(WEB).as_posix(): p.read_text(encoding="utf-8") for p in APP_JS}
     for i, js in enumerate(page.inline_js):
-        files[f"classic.html <script> #{i + 1}"] = js
+        files[f"index.html <script> #{i + 1}"] = js
     return files
 
 
@@ -98,7 +99,7 @@ def test_scripts_use_literal_ids_only():
     assert not bad, "dynamic element ids found (write them out literally):\n" + "\n".join(bad)
 
 
-def test_every_script_hook_exists_in_classic_html():
+def test_every_script_hook_exists_in_index_html():
     page = _page()
     ids = {a["id"] for _, a in page.elements if "id" in a}
     classes = {c for _, a in page.elements for c in a.get("class", "").split()}
@@ -111,14 +112,14 @@ def test_every_script_hook_exists_in_classic_html():
         ok = any(attr in a and (val is None or a[attr] == val) for _, a in page.elements)
         if not ok:
             missing.append(f"[{attr}{'=' + val if val is not None else ''}] (used in {', '.join(sorted(where))})")
-    assert not missing, "web/classic.html is missing elements the scripts use:\n" + "\n".join(missing)
+    assert not missing, "web/index.html is missing elements the app's scripts use:\n" + "\n".join(missing)
 
 
 def test_known_hooks_are_still_queried():
     """Guards the parser itself: these hooks are definitely used, so they must be found."""
     hooks = _hooks(_page())
-    for i in ("verdict-label", "reasons", "aqi", "aqi-cat", "stale", "stale-bar", "scrub", "scrub-bars",
-              "local-card", "explore-card", "fire-line", "btn-announce", "btn-replay", "btn-sound", "btn-orbit",
+    for i in ("verdict-label", "reasons", "aqi", "aqi-cat", "stale", "stale-bar", "app",
+              "local-card", "explore-card", "fire-line", "btn-announce", "btn-sound", "btn-orbit",
               "mode-chip", "clock", "x-aqi", "c-aqi", "wx-cond", "l-aqi", "pi-stale", "po-aqi", "localmap", "globe"):
         assert i in hooks["id"], f"#{i} is no longer looked up by the scripts"
     attrs = {a for a, _ in hooks["attr"]}
@@ -133,7 +134,7 @@ def test_ids_are_unique():
     for _, a in _page().elements:
         if "id" in a:
             (dupes if a["id"] in seen else seen).add(a["id"])
-    assert not dupes, f"duplicate ids in classic.html: {sorted(dupes)}"
+    assert not dupes, f"duplicate ids in index.html (the story and the app share it): {sorted(dupes)}"
 
 
 def test_every_tab_has_a_panel():
@@ -147,3 +148,17 @@ def test_every_tab_has_a_panel():
         assert a.get("data-tab"), f"role=tab without data-tab: {a}"
         assert f"tab-{a['data-tab']}" in ids & panels, f"no .panel#tab-{a['data-tab']} for data-tab={a['data-tab']}"
         assert a.get("aria-selected") in ("true", "false"), f"tab {a['data-tab']} needs aria-selected"
+
+
+def test_the_app_has_four_tabs_and_nothing_the_story_already_tells():
+    """NOW, PHS CAMPUS, FORECAST, EARTH. The 2023 record, the how-it-works tab, the splash and the hero
+    were removed: the scroll story covers them."""
+    els = _page().elements
+    tabs = [a["data-tab"] for _, a in els if a.get("role") == "tab"]
+    assert tabs == ["now", "local", "sky", "explore"], tabs
+    ids = {a["id"] for _, a in els if "id" in a}
+    for gone in ("tab-replay", "tab-system", "splash", "hero", "btn-initiate", "scrub", "btn-replay"):
+        assert gone not in ids, f"#{gone} should be gone"
+    js = "\n".join(_scripts(_page()).values())
+    for gone in ("loadReplay", "showHour", "lockNJ", "setSmoke", "SkyAudio"):
+        assert gone not in js, f"{gone} should be gone from the app's scripts"

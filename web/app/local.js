@@ -1,10 +1,10 @@
-// Close-up map of Princeton (Leaflet), seen through the window panes in the Campus view.
-// The SkyWindow device marker at PHS shows the Raspberry Pi's live inside reading next to the outside air.
+// Close-up map of Princeton (Leaflet). Used as the NOW tab's city view and the LOCAL tab's school view.
+// The story's Earth dives into it at zoom 6 (wide()), then it flies down to the city.
+// The SkyWindow device marker at PHS shows the Raspberry Pi's live INSIDE reading next to the outside air.
 // Base layers (no API keys): Esri World Imagery + Esri reference labels, or OpenStreetMap tiles.
 const LocalMap = (() => {
   const PHS = [40.3587, -74.656];
   let map, sat, dark, labels, gridLayer, fireLayer, pickMarker, deviceMarker, onAnalyze = () => {}, ready = false, gridLoaded = false;
-  let pad = null; // [[left, top], [right, bottom]] from the page, so views fit inside the window panes
 
   function init(el) {
     if (ready) return;
@@ -31,12 +31,10 @@ const LocalMap = (() => {
     fireLayer = L.layerGroup().addTo(map);
 
     deviceMarker = L.marker(PHS, {
-      icon: L.divIcon({ className: "device-pin", iconSize: [30, 30],
-        html: '<span class="win"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#1C2024" stroke-width="1.75" aria-hidden="true"><rect x="3.5" y="2.5" width="13" height="15"/><path d="M3.5 10.5h13M10 2.5v15"/></svg></span>' }),
+      icon: L.divIcon({ className: "device-pin", html: '<span class="pulse"></span><span class="core"></span>', iconSize: [22, 22] }),
       zIndexOffset: 1000,
     }).addTo(map);
-    deviceMarker.bindTooltip('<span class="dt-title">SkyWindow at PHS</span>Princeton High School', { permanent: true, direction: "top", offset: [0, -20], className: "device-tip" });
-    map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
+    deviceMarker.bindTooltip("SkyWindow · Princeton High School", { permanent: true, direction: "right", offset: [14, 0], className: "device-tip" });
 
     map.on("click", (e) => analyze(e.latlng.lat, e.latlng.lng));
   }
@@ -47,8 +45,11 @@ const LocalMap = (() => {
     const el = deviceMarker.getElement();
     if (el) el.style.setProperty("--v", d.color);
     deviceMarker.setTooltipContent(
-      `<span class="dt-title">SkyWindow at PHS</span>` +
-      `<span class="dt-verdict" style="color:${d.color}">${d.verdict}</span>, AQI ${d.aqi}, room ${d.inside}`);
+      `<div class="dt-title">SKYWINDOW · PHS</div>` +
+      `<div class="dt-verdict" style="color:${d.color}">${d.verdict}</div>` +
+      `<div class="dt-row"><span>${d.insideLabel || "INSIDE " + (d.mock ? "(SIMULATED)" : "(RASPBERRY PI)")}</span><b>${d.inside}</b></div>` +
+      `<div class="dt-row"><span>OUTSIDE AQI</span><b style="color:${d.catColor}">${d.aqi} ${d.cat}</b></div>` +
+      `<div class="dt-row"><span>WEATHER</span><b>${d.weather}</b></div>`);
   }
 
   async function loadGrid() {
@@ -72,25 +73,28 @@ const LocalMap = (() => {
     fireLayer.clearLayers();
     for (const f of fires) {
       const r = Math.max(4, Math.min(14, 3 + Math.sqrt(f.frp) * 1.6));
-      L.circleMarker([f.lat, f.lon], { radius: r, color: "#9B4805", weight: 1.5, fillColor: "#DD7B2B", fillOpacity: 0.75 })
-        .bindTooltip(`<b>Satellite fire detection</b><br>${f.date}, ${f.time.slice(0, 2)}:${f.time.slice(2)} UTC<br>${f.frp} MW, ${f.confidence} confidence, ${f.km} km from PHS`, { direction: "top" })
+      L.circleMarker([f.lat, f.lon], { radius: r, color: "#ff8a3d", weight: 1, fillColor: "#ff5a1f", fillOpacity: 0.65 })
+        .bindTooltip(`🔥 Satellite fire detection<br>${f.date} ${f.time.slice(0, 2)}:${f.time.slice(2)} UTC · ${f.frp} MW · ${f.confidence}<br>${f.km} km from PHS`, { direction: "top" })
         .addTo(fireLayer);
     }
   }
 
   function analyze(lat, lon) {
     if (pickMarker) pickMarker.setLatLng([lat, lon]);
-    else pickMarker = L.circleMarker([lat, lon], { radius: 10, color: "#F2F3F0", weight: 3, fillOpacity: 0 }).addTo(map);
+    else pickMarker = L.circleMarker([lat, lon], { radius: 9, color: "#fff", weight: 2, fillOpacity: 0 }).addTo(map);
     onAnalyze(lat, lon);
   }
   function setPickColor(color) { if (pickMarker) pickMarker.setStyle({ color }); }
 
-  function padding() { return pad ? pad[0] : [0, 60]; }
-  function bottomPad() { return pad ? pad[1] : [20, 40]; }
+  function padding() { return innerWidth > 900 ? [Math.min(620, innerWidth * 0.45), 60] : [0, 60]; }
+  function bottomPad() { return innerWidth > 900 ? [20, 40] : [20, innerHeight * 0.5]; } // phone: panel docked at bottom
 
-  /** Fly to a view of PHS: "city" (Princeton, ~zoom 13) or "school" (the building, ~zoom 17). */
-  function view(kind, fly = true) {
+  /** Fly to a view of PHS: "city" (Princeton, ~zoom 13) or "school" (the building, ~zoom 17).
+   *  hold: keep the place names and roads out of the flight, and fade them in on arrival */
+  function view(kind, fly = true, { holdLabels: hold = false } = {}) {
     map.invalidateSize();
+    if (hold && fly) { holdLabels(true); map.once("moveend", () => holdLabels(false)); }
+    else holdLabels(false);
     const radius = kind === "school" ? 300 : 1800; // metres around PHS kept in view
     const opts = { paddingTopLeft: padding(), paddingBottomRight: bottomPad(), maxZoom: kind === "school" ? 18 : 15 };
     const b = L.latLng(PHS).toBounds(radius * 2);
@@ -108,6 +112,31 @@ const LocalMap = (() => {
     on ? l.addTo(map) : map.removeLayer(l);
   }
 
-  return { init, view, setBase, updateDevice, setFires, analyze, setPickColor, toggle, setPadding: (tl, br) => (pad = [tl, br]),
+  /** place names and roads off (instantly) or back on (fading): Leaflet blows them up mid-zoom */
+  function holdLabels(on) {
+    labels.getLayers().forEach((l, i) => {
+      const c = l.getContainer();
+      if (c) c.style.transition = on ? "none" : "opacity .8s ease";
+      l.setOpacity(on ? 0 : i === 0 ? 0.8 : 1);
+    });
+  }
+
+  /** The wide view the globe hands over to: PHS in the centre at zoom 6, without labels (the next view
+   *  brings them back). With a duration it flies there (resolves when it arrives); without one it jumps. */
+  function wide(duration = 0) {
+    if (!ready) return Promise.resolve();
+    map.invalidateSize(); map.stop();
+    holdLabels(true);
+    if (!duration) { map.setView(PHS, 6, { animate: false }); return Promise.resolve(); }
+    return new Promise((res) => { map.once("moveend", res); map.flyTo(PHS, 6, { duration }); setTimeout(res, duration * 1000 + 500); });
+  }
+  /** Ground width across the map right now, in km (at PHS's latitude). */
+  function widthKm() {
+    if (!ready) return null;
+    const b = map.getBounds();
+    return map.distance([PHS[0], b.getWest()], [PHS[0], b.getEast()]) / 1000;
+  }
+
+  return { init, view, wide, widthKm, setBase, updateDevice, setFires, analyze, setPickColor, toggle,
     onAnalyze: (cb) => (onAnalyze = cb), invalidate: () => ready && map.invalidateSize(), PHS };
 })();

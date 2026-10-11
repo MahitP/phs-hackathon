@@ -159,9 +159,12 @@ export function createRoom({ renderer, tier, manager }) {
   const liveSky = () => skyFrom({ aod: live?.aod ?? 0.15, el: live?.sunElevation ?? 35, az: live?.sunAzimuth ?? 200, cloud: live?.cloud != null ? live.cloud / 100 : 0 });
   function liveKey() { return live?.verdict && LCD[live.verdict] ? live.verdict : "either"; }
 
-  let skyEnvWait = 0;
-  function updateSkyEnv(dt) {
+  let skyEnvWait = 0, lastUpdate = -1;
+  /** the sky's reflection map: rebuilt once the sky has settled, not while it moves (each rebuild is a
+   *  ~80 ms frame on a laptop GPU; rebuilding every 0.25 s during a change was a visible stutter) */
+  function updateSkyEnv(dt, moving) {
     skyEnvWait -= dt;
+    if (moving && skyEnv) return;
     const key = [cur.t, cur.r, cur.m * 100, cur.smoke * 4, cur.el / 3, cur.az / 6].map((v) => Math.round(v * 2)).join(",");
     if (key === skyEnvKey || (skyEnv && skyEnvWait > 0)) return;
     skyEnvKey = key; skyEnvWait = 0.25;
@@ -202,7 +205,11 @@ export function createRoom({ renderer, tier, manager }) {
       for (const [k, a, b] of VERDICT_BEATS) if (l7 >= a - 0.02 && l7 < b + 0.02) beat = k;
       if (beat) target = SKY[beat];
     }
-    const k = drive?.snap ? 1 : 1 - Math.exp(-dt * 3.2); // snap: arriving under a cloud, no visible drift
+    // snap: arriving under a cloud (or back after another world was showing), no visible drift
+    const snap = drive?.snap || time - lastUpdate > 0.3;
+    lastUpdate = time;
+    const k = snap ? 1 : 1 - Math.exp(-dt * 3.2);
+    const moving = Math.abs(cur.el - target[4]) > 0.6 || Math.abs(cur.t - target[0]) > 0.15 || Math.abs(cur.smoke - target[3]) > 0.03 || Math.abs(cur.az - target[5]) > 1.5;
     cur.t = lerp(cur.t, target[0], k); cur.r = lerp(cur.r, target[1], k); cur.m = lerp(cur.m, target[2], k);
     cur.smoke = lerp(cur.smoke, target[3], k); cur.el = lerp(cur.el, target[4], k); cur.az = lerp(cur.az, target[5], k);
     cur.cloud = lerp(cur.cloud, target[7] ?? 0, k);
@@ -210,7 +217,7 @@ export function createRoom({ renderer, tier, manager }) {
     sunVector(cur.el, cur.az, sunV);
     su.sunPosition.value.copy(sunV);
     veil.material.uniforms.uAmt.value = cur.smoke;
-    updateSkyEnv(dt);
+    updateSkyEnv(dt, moving && !snap);
     const day = smooth(range(cur.el, -4, 8));
     sunColor.setRGB(1, lerp(0.95, 0.6, cur.smoke) * lerp(0.82, 1, smooth(range(cur.el, 4, 30))), lerp(0.88, 0.38, cur.smoke) * lerp(0.62, 1, smooth(range(cur.el, 4, 30))));
     const sunIntensity = (0.3 + 4.6 * day) * (1 - cur.smoke * 0.55) * (1 - cur.cloud * 0.65);

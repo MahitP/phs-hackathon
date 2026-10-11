@@ -7,13 +7,14 @@ falls back to the last cached reading.
 | File | Used by | Source | License |
 |---|---|---|---|
 | `three/three.module.min.js`, `three/addons/…` (GLTFLoader, RGBELoader, Sky, EffectComposer + passes incl. GTAO, SMAA, Bokeh, UnrealBloom, CSS2DRenderer, OrbitControls, RoomEnvironment, RectAreaLight libs, SimplexNoise, RoundedBoxGeometry, BufferGeometryUtils, meshopt decoder) | 3D story (`index.html`) | three.js 0.169.0, npm | MIT |
-| `three.min.js` | dashboard globe (`app.html`) | three.js r128, cdnjs | MIT |
+| `three.min.js` | the app's globe (`app/globe.js`, loaded when the app opens) | three.js r128, cdnjs | MIT |
 | `gsap.min.js` | both | GSAP 3.13.0, npm | GreenSock Standard License (free, plugins included since 3.13) |
 | `lenis.min.js`, `lenis.css` | 3D story smooth scroll | Lenis 1.3.11, npm | MIT |
-| `chart.umd.min.js` | dashboard | Chart.js 4.4.1, cdnjs | MIT |
-| `leaflet.min.js`, `leaflet.min.css`, `images/` | dashboard | Leaflet 1.9.4, cdnjs | BSD-2-Clause |
+| `chart.umd.min.js` | the app's charts | Chart.js 4.4.1, cdnjs | MIT |
+| `leaflet.min.js`, `leaflet.min.css`, `images/` | the app's PHS map (`app/local.js`) | Leaflet 1.9.4, cdnjs | BSD-2-Clause |
 | `textures/earth_*` | both | three.js example textures (`examples/textures/planets/`, r169 for `earth_lights_2048.png`) | MIT |
-| `fonts/archivo.css`, `fonts/Archivo-*.woff2` | both | Archivo variable (width 62–125, weight 100–900), Google Fonts | SIL Open Font License 1.1 |
+| `fonts/archivo.css`, `fonts/Archivo-*.woff2` | 3D story | Archivo variable (width 62–125, weight 100–900), Google Fonts | SIL Open Font License 1.1 |
+| `fonts/fonts.css`, `fonts/Inter-*.woff2`, `fonts/JetBrainsMono-*.woff2` | the app (`app/app.css`) | Inter and JetBrains Mono, latin subsets, Google Fonts | SIL Open Font License 1.1 |
 
 Story assets in `web/assets/`:
 

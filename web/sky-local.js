@@ -15,6 +15,11 @@ const LocalSky = (() => {
 
   const qs = (o) => new URLSearchParams(o).toString();
   async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+  // the weather is optional: the verdict runs on the air. If the weather API is down or rate-limited
+  // (it allows 10,000 calls a day per address), carry on with the last weather we had, or none.
+  let lastWx = null;
+  const NO_WX = { current: {}, hourly: {} };
+  const weather = (url) => getJSON(url).then((w) => (lastWx = w)).catch(() => lastWx || NO_WX);
 
   async function fetchSky() {
     if (sky && Date.now() - fetchedAt < 600000) return;
@@ -22,7 +27,7 @@ const LocalSky = (() => {
     const [aq, wx] = await Promise.all([
       getJSON("https://air-quality-api.open-meteo.com/v1/air-quality?" + qs({ ...base,
         current: "us_aqi,pm2_5,pm10,ozone,dust,aerosol_optical_depth,uv_index", hourly: "us_aqi,pm2_5,aerosol_optical_depth" })),
-      getJSON("https://api.open-meteo.com/v1/forecast?" + qs({ ...base,
+      weather("https://api.open-meteo.com/v1/forecast?" + qs({ ...base,
         current: WX_NOW + ",shortwave_radiation",
         hourly: "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability" })),
     ]);
@@ -121,7 +126,7 @@ const LocalSky = (() => {
     const [aq, wx, place] = await Promise.all([
       getJSON("https://air-quality-api.open-meteo.com/v1/air-quality?" + qs({ ...base,
         current: "us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,dust,aerosol_optical_depth,uv_index" })),
-      getJSON("https://api.open-meteo.com/v1/forecast?" + qs({ ...base, current: WX_NOW + ",dew_point_2m,surface_pressure,visibility" })),
+      getJSON("https://api.open-meteo.com/v1/forecast?" + qs({ ...base, current: WX_NOW + ",dew_point_2m,surface_pressure,visibility" })).catch(() => NO_WX),
       placeName(lat, lon),
     ]);
     const c = { ...aq.current, ...wx.current };

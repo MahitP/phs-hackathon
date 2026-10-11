@@ -151,10 +151,17 @@ export function createEarth({ manager, tier, smoke, renderer }) {
   scene.add(globe);
 
   // sharper maps arrive after the first chapter is already on screen
+  /** the 8K maps. Resolves once they're on the GPU: boot runs this behind the loader, because uploading
+   *  two 8K textures mid-story froze one frame for ~0.7 s */
+  let upgraded = null;
   function upgrade() {
-    if (tier !== "high") return;
-    lateLoader.load("assets/textures/earth/day_8k.jpg", (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; surfaceU.dayMap.value = t; });
-    lateLoader.load("assets/textures/earth/night_8k.jpg", (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; surfaceU.nightMap.value = t; });
+    if (tier !== "high") return Promise.resolve();
+    const one = (url, slot) => new Promise((res) => lateLoader.load(url, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso;
+      renderer.initTexture(t); // upload now, not on the first frame that draws it
+      surfaceU[slot].value = t; res();
+    }, undefined, () => res()));
+    return (upgraded ||= Promise.all([one("assets/textures/earth/day_8k.jpg", "dayMap"), one("assets/textures/earth/night_8k.jpg", "nightMap")]));
   }
 
   // ---- the real sky ----
@@ -329,8 +336,24 @@ export function createEarth({ manager, tier, smoke, renderer }) {
   function spinFor(subLonDeg) { let s = heroLon + 0.7 - subLonDeg * Math.PI / 180; s = ((s + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return s; }
   let hourShown = -1, frame = 0;
 
-  function update(T, dt, time, hud) {
-    rig.apply(T, dt);
+  /** Put the camera at a pose {p, t, fov} (the dive into the app drives the camera this way instead of story time). */
+  function applyPose(pose) {
+    camera.position.fromArray(pose.p); rig.target.fromArray(pose.t); camera.lookAt(rig.target);
+    if (Math.abs(camera.fov - pose.fov) > 1e-3) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
+  }
+  /** where the camera is now, as a pose */
+  const pose = () => ({ p: camera.position.toArray(), t: rig.target.toArray(), fov: camera.fov });
+  /** the story's camera at story time T, without the pointer parallax */
+  const poseAt = (T) => { const o = rig.sample(T); return { p: o.slice(0, 3), t: o.slice(3, 6), fov: o[6] }; };
+  /** a point on the surface in world space, with the planet turned as it is right now */
+  function surfacePoint(lat, lon) {
+    globe.updateMatrixWorld();
+    return globe.localToWorld(latLon(lat, lon, 1, new THREE.Vector3())).toArray();
+  }
+
+  // `drive` (the dive into the app): { camera: {p, t, fov} } replaces the story's camera path
+  function update(T, dt, time, hud, _live, _sound, drive = null) {
+    if (drive?.camera) applyPose(drive.camera); else rig.apply(T, dt);
     frame++;
     // sun: the real sun now for the orbit chapter, then the sun of each 2023 hour as the plume plays
     const now = new Date();
@@ -429,5 +452,5 @@ export function createEarth({ manager, tier, smoke, renderer }) {
     return { pos: _c.copy(sunSprite.position), strength: 0.9, threshold: 1.6, flare: vis * 0.9, tint: 0xffeedd };
   }
 
-  return { scene, camera, update, upgrade, dof, godrays, satellite: sat, exposure: 1.0, bloom: [0.45, 0.5, 0.88] };
+  return { scene, camera, update, upgrade, dof, godrays, pose, poseAt, surfacePoint, satellite: sat, exposure: 1.0, bloom: [0.45, 0.5, 0.88] };
 }

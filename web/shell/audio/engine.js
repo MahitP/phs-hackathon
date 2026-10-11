@@ -7,7 +7,7 @@
 //
 // Keeps the old API (on, toggle, setWind, whoosh, tick, chime), so callers didn't change.
 import * as THREE from "three";
-import { storyMix, liveMix, crossings, STORY_SHOTS, OUTDOOR, BEDS } from "./cues.js";
+import { storyMix, liveMix, appMix, crossings, STORY_SHOTS, OUTDOOR, BEDS } from "./cues.js";
 
 const BASE = new URL("../../assets/audio/", import.meta.url).href;
 /** where things are in the classroom (metres; the window is in the wall at z = 0, the room is z < 0) */
@@ -309,6 +309,50 @@ function liveEvents(live, now) {
   }
 }
 
+// ---------------------------------------------------------------- the tape rewind (into the app)
+
+let rw = null;
+/** the motor: bandpassed noise (the tape hiss) and a buzzy motor tone, both rising with speed, with flutter;
+ *  under it, if it's decoded, the last stretch of the score played backwards at the tape's speed */
+function rewindStart() {
+  if (!ctx || !on || rw) return;
+  const t = ctx.currentTime, sr = ctx.sampleRate;
+  const nb = ctx.createBuffer(1, sr * 2, sr), d = nb.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const noise = new AudioBufferSourceNode(ctx, { buffer: nb, loop: true });
+  const bp = new BiquadFilterNode(ctx, { type: "bandpass", frequency: 500, Q: 2.4 });
+  const motor = new OscillatorNode(ctx, { type: "sawtooth", frequency: 55 });
+  const mlp = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 420, Q: 0.9 });
+  const ng = new GainNode(ctx, { gain: 0.55 }), mg = new GainNode(ctx, { gain: 0.16 });
+  const out = new GainNode(ctx, { gain: 0 }), am = new GainNode(ctx, { gain: 1 });
+  const flutter = new OscillatorNode(ctx, { frequency: 9.5 }), fAmt = new GainNode(ctx, { gain: 0.18 });
+  noise.connect(bp).connect(ng).connect(out); motor.connect(mlp).connect(mg).connect(out);
+  flutter.connect(fAmt).connect(am.gain);
+  out.connect(am).connect(bus.effects);
+  noise.start(t); motor.start(t); flutter.start(t);
+  rw = { noise, bp, motor, out, flutter, rev: null };
+  // the score you just heard, backwards: the last 14 s before the playhead
+  const tr = current && tracks[current];
+  if (tier !== "low" && tr && (current === "dawn-end" || current === "dawn") && buffers.has(current)) {
+    const pos = tr.els[tr.active].currentTime;
+    buffers.get(current).then((buf) => {
+      if (!buf || !rw) return;
+      const a = Math.max(0, Math.floor((pos - 14) * buf.sampleRate)), b = Math.min(buf.length, Math.floor(pos * buf.sampleRate)), n = b - a;
+      if (n < buf.sampleRate) return;
+      const rev = ctx.createBuffer(buf.numberOfChannels, n, buf.sampleRate);
+      for (let c = 0; c < buf.numberOfChannels; c++) { const src = buf.getChannelData(c), dst = rev.getChannelData(c); for (let i = 0; i < n; i++) dst[i] = src[b - 1 - i]; }
+      const s = new AudioBufferSourceNode(ctx, { buffer: rev, playbackRate: 1 });
+      const hp = new BiquadFilterNode(ctx, { type: "highpass", frequency: 220, Q: 0.7 }), g = new GainNode(ctx, { gain: 0 });
+      s.connect(hp).connect(g).connect(am);
+      s.start();
+      rw.rev = { s, g };
+    });
+  }
+  // the story steps aside: the score fades fast, the beds follow in applyMix(QUIET)
+  musicTo(null, 0.45);
+}
+const QUIET = { beds: Object.fromEntries(BEDS.map((k) => [k, 0])), outsideGain: 0, outsideLowpass: 20000, inside: 0, clock: false, musicLowpass: 20000 };
+
 // ---------------------------------------------------------------- per-frame drivers
 
 function applyMix(mix, dt, { story = false } = {}) {
@@ -388,8 +432,47 @@ export const Sound = {
     satellite(0, null, null, dt);
   },
 
+  /** every frame in the app: the live weather over PHS, outdoors (cars and geese now and then) */
+  app(dt, { live = null } = {}) {
+    if (!ctx || !on) return;
+    lastT = null;
+    if (live?.wind != null) wind = live.wind;
+    musicTo(settings.liveMusic ? "dawn" : null, 2.2); // the music ends with the story, unless the mix panel keeps it
+    applyMix(appMix({ live }), dt);
+    if (live) liveEvents(live, new Date());
+    satellite(0, null, null, dt);
+  },
   cue,
   sashMove,
+  /** decode the score's last phrase ahead of time, so the rewind can play it backwards */
+  prepareRewind() { if (ctx && on && tier !== "low" && current) buffer(current); },
+  /** the tape rewind begins: the story fades out under a motor whir */
+  rewind() { rewindStart(); },
+  /** every rewind frame: v is the tape's speed, 0..1 */
+  rewindSpeed(v, dt = 0) {
+    if (!ctx || !on) return;
+    applyMix(QUIET, dt);
+    if (!rw) return;
+    const t = ctx.currentTime, k = clamp(v);
+    rw.bp.frequency.setTargetAtTime(380 + 2600 * k, t, 0.04);
+    rw.motor.frequency.setTargetAtTime(48 + 230 * k, t, 0.04);
+    rw.out.gain.setTargetAtTime(0.06 + 0.3 * k, t, 0.05);
+    if (rw.rev) { rw.rev.s.playbackRate.setTargetAtTime(0.7 + 4.2 * k, t, 0.05); rw.rev.g.gain.setTargetAtTime(0.5 * Math.min(1, k * 1.6), t, 0.05); }
+  },
+  /** the tape hits its stop: the motor cuts and the deck clunks (silent: just cut, for a skip) */
+  rewindStop(silent = false) {
+    if (rw) {
+      const t = ctx.currentTime, r = rw; rw = null;
+      r.out.gain.cancelScheduledValues(t); r.out.gain.setTargetAtTime(0, t, 0.012);
+      if (r.rev) { r.rev.g.gain.cancelScheduledValues(t); r.rev.g.gain.setTargetAtTime(0, t, 0.012); }
+      setTimeout(() => { [r.noise, r.motor, r.flutter, r.rev?.s].forEach((n) => { try { n?.stop(); } catch { /* */ } }); }, 300);
+    }
+    if (silent) return;
+    cue("relay", { to: "ui", gain: 1 });
+    cue("thud", { gain: 0.45 });
+  },
+  /** the hand-off's quiet moments: beds and the outside fade, nothing new starts */
+  quiet(dt) { if (ctx && on) applyMix(QUIET, dt); },
   /** the sash hit a stop */
   sashStop(speed = 0.5) { cue("sash-thunk", { at: "sash", gain: clamp(Math.abs(speed) / 0.6, 0.25, 1) }); },
   /** the verdict changed on the device: its speaker beeps (twice for Ventilate) */

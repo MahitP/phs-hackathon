@@ -15,15 +15,16 @@ const REDUCED_POSE = [0.56, 1.6, 2.8, 3.5, 4.75, 5.95, 6.1, 7.15, 8.5];
 export function createStoryMode({ stage, scroll, hud, sound, reduced }) {
   let live = null, T = 0, sceneT = 0;
 
-  function frame(dt, time) {
-    scroll.update(dt);
-    T = scroll.T;
+  /** opts.T plays the story at that time instead of the scroll's (the rewind); opts.quiet keeps the
+   *  chapter text where it is and the worlds' one-shot sounds off */
+  function frame(dt, time, { T: at = null, quiet = false } = {}) {
+    if (at == null) { scroll.update(dt); T = scroll.T; } else T = at;
     if (!Number.isFinite(T)) T = 0;
     // the scene holds a pose per chapter under reduced motion, but the text follows the real scroll
     sceneT = reduced ? REDUCED_POSE[clamp(Math.floor(T), 0, REDUCED_POSE.length - 1)] : T;
     // (after a cold start in the live window the earlier worlds may still be streaming in)
     const want = worldAt(sceneT), key = stage.worlds[want] ? want : "room", w = stage.setActiveWorld(key);
-    w.update(sceneT, dt, time, hud, live, sound);
+    w.update(sceneT, dt, time, hud, live, quiet ? null : sound);
     stage.post.tickWorld(sceneT);
 
     let cover = 0, color = null;
@@ -31,7 +32,7 @@ export function createStoryMode({ stage, scroll, hud, sound, reduced }) {
     for (const [a, b, , c] of CURTAINS) if (sceneT > a && sceneT < b) { cover = range(sceneT, a, b); color = c; }
     stage.post.setCurtain(cover, color, time);
     stage.post.tick(time);
-    hud.update(T);
+    if (!quiet) hud.update(T);
     if (sceneT < 7 || sceneT >= 8) hud.verdict(null);
     return key;
   }

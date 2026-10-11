@@ -6,6 +6,8 @@
 // opacity follows real cloud cover, a Fresnel atmosphere tints from blue to smoke-orange with haze,
 // an aerosol layer appears only when the sky is actually hazy, and a beacon marks Princeton.
 // three.js r128 (global THREE) + GSAP for the camera flight.
+// In SkyWindow's one-page site this globe only runs inside the app: init() builds it without rendering,
+// start()/stop() switch its render loop on and off, so it costs nothing while the story plays.
 const Globe = (() => {
   const LAT = 40.3587, LON = -74.656;
   const TEXTURES = "vendor/textures/"; // bundled copies of threejs.org/examples/textures/planets/
@@ -15,8 +17,7 @@ const Globe = (() => {
   const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
   let focused = false, dragging = false, lastX = 0, lastY = 0, velX = 0.0012, velY = 0;
   let windSpeed = 8, hazeLevel = 0;
-  const clearBlue = new THREE.Color("#5b9dff"), smoke = new THREE.Color("#DD7B2B");
-  let frame = null; // {cx, cy}: where the page wants the globe's centre on screen (inside the window panes)
+  const clearBlue = new THREE.Color("#5b9dff"), smoke = new THREE.Color("#ff7a2e");
 
   function latLon(lat, lon, r) {
     const phi = (90 - lat) * Math.PI / 180, theta = (lon + 180) * Math.PI / 180;
@@ -67,7 +68,7 @@ const Globe = (() => {
     };
     setTimeout(() => resolveReady(false), 10000); // never block the splash on a slow network
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.62)); // keeps the night side readable while still showing day/night
 
     earth = new THREE.Group();
     earthMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), new THREE.MeshPhongMaterial({
@@ -175,9 +176,16 @@ const Globe = (() => {
 
     addEventListener("resize", resize);
     resize();
-    renderer.setAnimationLoop(tick);
     return ready;
   }
+
+  let running = false;
+  /** Render every frame (the globe is on screen). */
+  function start() { if (renderer && !running) { running = true; renderer.setAnimationLoop(tick); } }
+  /** Stop rendering (the globe is hidden or the app is closed). */
+  function stop() { if (renderer && running) { running = false; renderer.setAnimationLoop(null); } }
+  /** Compile the shaders now, so the first frame on screen doesn't stall. */
+  function compile() { if (renderer) renderer.compile(scene, camera); }
 
   const rot = { x: 0, y: 0 }; // tween proxy for flights
 
@@ -222,15 +230,31 @@ const Globe = (() => {
   function hidePin() { pin.visible = pinRing.visible = false; }
 
   /** Rotate the globe so (lat, lon) faces the camera. */
-  function flyTo(lat, lon, duration = 1.6) {
+  function flyTo(lat, lon, duration = 1.6, dist = null) {
     const targetY = Math.PI / 2 - (lon + 180) * Math.PI / 180;
     gsap.killTweensOf(rot); // a new destination always wins over an unfinished flight
     rot.y = earth.rotation.y; rot.x = earth.rotation.x;
     const wrapped = rot.y + ((((targetY - rot.y) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
     velX = velY = 0;
-    gsap.to(rot, { y: wrapped, x: Math.max(-1, Math.min(1, lat * Math.PI / 180 * 0.85)), duration, ease: "power3.inOut",
+    // rotation.y brings the longitude to the front, rotation.x = latitude tilts it to the exact centre
+    gsap.to(rot, { y: wrapped, x: lat * Math.PI / 180, duration, ease: "power3.inOut",
       onUpdate: () => { earth.rotation.y = rot.y; earth.rotation.x = rot.x; } });
+    if (dist) setDistance(dist, duration);
   }
+
+  // Camera always sits on the axis looking straight at the globe, so a focused region is never
+  // seen at an angle. To leave room for the panel we shift the *rendered image* (view offset).
+  function setDistance(z, duration = 1.6) {
+    gsap.to(camera.position, { x: 0, y: 0, z, duration, ease: "power3.inOut", onUpdate: () => camera.lookAt(0, 0, 0) });
+  }
+  let shift = 0; // px the globe is pushed right
+  function setShift(px) {
+    shift = px;
+    if (px) camera.setViewOffset(innerWidth, innerHeight, -px, 0, innerWidth, innerHeight);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+  }
+  function panelShift() { return innerWidth > 900 ? Math.min(640, innerWidth * 0.46) / 2 : 0; }
 
   // live air-quality dots for world cities (size + color = EPA category)
   let cityGroup = null;
@@ -257,15 +281,16 @@ const Globe = (() => {
   }
 
   // orbit (hero) view: on wide screens push the globe right so the headline has room
-  function orbitPos() { return innerWidth > 900 ? { x: -1.9, y: 0.5, z: 6.2, lx: -1.6 } : { x: 0, y: 0.9, z: 7.2, lx: 0 }; }
-  function orbitView() { const o = orbitPos(); camera.position.set(o.x, o.y, o.z); camera.lookAt(o.lx, 0, 0); }
+  function orbitView() {
+    camera.position.set(0, 0, innerWidth > 900 ? 6.2 : 7.2); camera.lookAt(0, 0, 0);
+    setShift(innerWidth > 900 ? innerWidth * 0.2 : 0);
+  }
 
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
     camera.aspect = innerWidth / innerHeight;
-    applyFrame();
     camera.updateProjectionMatrix();
-    if (!focused && camera.position.z > 5) orbitView();
+    if (!focused && camera.position.z > 5) orbitView(); else setShift(panelShift());
   }
 
   function tick(t) {
@@ -290,42 +315,26 @@ const Globe = (() => {
   /** Fly from orbit down to a view over Princeton. */
   function focusHome(duration = 2.6) {
     focused = true;
-    flyTo(LAT, LON, duration);
-    // wide screens: globe sits on the right, panels on the left
-    const wide = innerWidth > 900, side = wide ? -1.15 : 0;
-    gsap.to(camera.position, { x: side, y: 0.1, z: wide ? 3.4 : 3.9, duration, ease: "power3.inOut", onUpdate: () => camera.lookAt(side * 0.85, wide ? 0 : -0.35, 0) });
+    gsap.to({ s: shift }, { s: panelShift(), duration, ease: "power3.inOut", onUpdate() { setShift(this.targets()[0].s); } });
+    flyTo(LAT, LON, duration, innerWidth > 900 ? 2.4 : 3.2);
+  }
+
+  /** Jump straight to the view over Princeton that focusHome() ends on (the app opened from the story). */
+  function snapHome() {
+    focused = true;
+    gsap.killTweensOf(rot); gsap.killTweensOf(camera.position);
+    velX = velY = 0;
+    earth.rotation.y = Math.PI / 2 - (LON + 180) * Math.PI / 180; earth.rotation.x = LAT * Math.PI / 180;
+    camera.position.set(0, 0, innerWidth > 900 ? 2.4 : 3.2); camera.lookAt(0, 0, 0);
+    setShift(panelShift());
   }
 
   function release() {
     focused = false;
     velX = 0.0012; velY = 0;
-    const o = orbitPos();
-    gsap.to(camera.position, { x: o.x, y: o.y, z: o.z, duration: 2, ease: "power2.inOut", onUpdate: () => camera.lookAt(o.lx, 0, 0) });
+    gsap.to({ s: shift }, { s: innerWidth > 900 ? innerWidth * 0.2 : 0, duration: 2, onUpdate() { setShift(this.targets()[0].s); } });
+    setDistance(innerWidth > 900 ? 6.2 : 7.2, 2);
   }
-
-  /** Shift the projection so the globe's centre lands on frame.cx/cy; raycast picking stays correct. */
-  function applyFrame() {
-    if (!camera) return;
-    if (!frame) camera.clearViewOffset();
-    else camera.setViewOffset(innerWidth, innerHeight, innerWidth / 2 - frame.cx, innerHeight / 2 - frame.cy, innerWidth, innerHeight);
-  }
-
-  /** Place the globe with its centre at screen point (cx, cy) and an apparent radius of r px. */
-  function frameAt(cx, cy, r, duration = 1.4) {
-    focused = true;
-    const a = Math.atan(r * Math.tan(camera.fov * Math.PI / 360) / (innerHeight / 2)), dist = 1 / Math.sin(a);
-    const start = frame || { cx: innerWidth / 2, cy: innerHeight / 2 };
-    frame = { cx: start.cx, cy: start.cy };
-    gsap.killTweensOf(camera.position); gsap.killTweensOf(camera);
-    const update = () => { camera.lookAt(0, 0, 0); applyFrame(); camera.updateProjectionMatrix(); };
-    if (reduceMotion || !duration) { camera.position.set(0, 0, dist); camera.zoom = 1; frame.cx = cx; frame.cy = cy; update(); return; }
-    gsap.to(camera.position, { x: 0, y: 0, z: dist, duration, ease: "power3.inOut", onUpdate: update });
-    gsap.to(camera, { zoom: 1, duration, ease: "power3.inOut" });
-    gsap.to(frame, { cx, cy, duration, ease: "power3.inOut", onUpdate: update });
-  }
-
-  /** Render only while the globe is on screen. */
-  function setActive(on) { if (renderer) renderer.setAnimationLoop(on ? tick : null); }
 
   /** haze 0..1 tints the atmosphere and fades in the aerosol layer; cloud % drives cloud opacity. */
   function setSky({ haze = 0, wind = 8, night = false, cloud = null }) {
@@ -344,6 +353,6 @@ const Globe = (() => {
     ring.material.color.set(hex);
   }
 
-  return { init, focusHome, release, setSky, setVerdictColor, flyTo, dropPin, hidePin, setCities, plunge, resetZoom, frameAt, setActive,
+  return { init, start, stop, compile, snapHome, focusHome, release, setSky, setVerdictColor, flyTo, setDistance, dropPin, hidePin, setCities, plunge, resetZoom,
     onPick: (cb) => (pickHandler = cb), HOME: { lat: LAT, lon: LON } };
 })();

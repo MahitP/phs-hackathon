@@ -1,4 +1,4 @@
-"""The one-page shell (web/index.html and web/app.html: the scroll story and the live window).
+"""The one-page shell (web/index.html and web/app.html: the scroll story and the app).
 
 Checks statically what would otherwise only fail in a browser: the two shell pages are the same
 document, every module reachable from shell/boot.js exists, every element id those modules look up
@@ -63,8 +63,18 @@ def test_shell_pages_are_the_same_document():
 def test_every_shell_import_resolves():
     mods = shell_modules()
     names = {m.relative_to(WEB).as_posix() for m in mods}
-    for expected in ("shell/stage.js", "shell/transition.js", "live/mode.js", "live/ui.js", "model/ventilation.js", "story/worlds/room.js"):
+    for expected in ("shell/stage.js", "shell/transition.js", "shell/rewind.js", "shell/dive.js", "shell/app-loader.js",
+                     "model/ventilation.js", "story/worlds/room.js", "story/worlds/earth.js"):
         assert expected in names, f"{expected} is no longer reachable from shell/boot.js"
+    assert not any(n.startswith("live/") for n in names), "the 3D live window was removed"
+
+
+def test_the_app_loader_points_at_real_scripts():
+    src = (WEB / "shell" / "app-loader.js").read_text(encoding="utf-8")
+    scripts = re.findall(r'"((?:vendor|app)/[\w./-]+\.js)"', re.search(r"APP_SCRIPTS = \[(.*?)\]", src, re.S).group(1))
+    assert scripts and scripts[-1] == "app/app.js", scripts
+    for s in scripts:
+        assert (WEB / s).is_file(), f"app-loader.js loads {s}, which doesn't exist"
 
 
 def test_every_id_the_shell_looks_up_exists():
@@ -92,7 +102,7 @@ def test_aria_and_label_references_point_at_real_elements():
 
 
 def test_live_links_work_without_javascript():
-    # the hand-off intercepts plain clicks; without JS (or with a modifier key) these must still navigate
+    # the hand-off intercepts plain clicks; without JS (or with a modifier key) these must still navigate to the app
     for _, a in page().elements:
         if "data-to-live" in a:
             assert a.get("href") == "app.html"
@@ -129,7 +139,6 @@ def test_every_built_sound_file_exists_and_matches_the_manifest():
 def test_every_sound_the_code_asks_for_is_built():
     names = set(built_cues()["cues"])
     src = "\n".join((WEB / "shell" / "audio" / f).read_text(encoding="utf-8") for f in ("engine.js", "cues.js"))
-    src += "\n".join(p.read_text(encoding="utf-8") for p in (WEB / "live").glob("*.js"))
     src += (WEB / "shell" / "transition.js").read_text(encoding="utf-8")
     asked = set(CUE_CALL.findall(src)) | set(re.findall(r'\[[\d.]+,\s*"([\w-]+)"', src))
     asked -= {"sat-beep"}  # the satellite's beeps are the "beep" cue, pitched up

@@ -1364,7 +1364,11 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
   const sun = new THREE.DirectionalLight(0xfff1de, 3);
   sun.target.position.set(0, 1.6, -0.5);
   scene.add(sun, sun.target);
-  if (!low) {
+  // The sun's shadow map is off: on Apple GPUs it made close-ups 6-8x slower (the device chapter fell to
+  // 8-20 fps on an M4 at 2x) whatever the filter, size or receivers. The analytic window mask (roomSunMask)
+  // still cuts the sunlight into window-shaped patches. ?sunshadow brings it back for comparison.
+  const SUN_SHADOW = !low && new URLSearchParams(location.search).has("sunshadow");
+  if (SUN_SHADOW) {
     sun.castShadow = true;
     const sz = high ? 4096 : 2048; sun.shadow.mapSize.set(sz, sz);
     sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.012;
@@ -1391,7 +1395,8 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
   const lights = { troffers: [], windows: [], points: [] };
   if (!low) {
     const lvl = high ? 5.5 : 5.5 * 3 / 3;
-    if (high) for (const [x, z] of TROFFERS) { const l = new THREE.RectAreaLight(0xfff6ea, lvl, 0.56, 1.17); l.position.set(x, CEIL - 0.01, z); l.lookAt(x, FL, z); scene.add(l); lights.troffers.push(l); }
+    // (the 3x3 troffer grid is 3 merged strips on every tier: each area light costs every pixel in view)
+    if (false) for (const [x, z] of TROFFERS) { const l = new THREE.RectAreaLight(0xfff6ea, lvl, 0.56, 1.17); l.position.set(x, CEIL - 0.01, z); l.lookAt(x, FL, z); scene.add(l); lights.troffers.push(l); }
     else for (const x of [-2.4384, 0, 2.4384]) { const l = new THREE.RectAreaLight(0xfff6ea, lvl, 0.56, 1.17 * 3 * 0.85); l.position.set(x, CEIL - 0.01, GZ(7)); l.intensity = lvl * 0.58; l.height = GZ(3) - GZ(11) + 1.17; l.lookAt(x, FL, GZ(7)); scene.add(l); lights.troffers.push(l); }
     for (const w of WINDOWS) { const l = new THREE.RectAreaLight(0xdfe9ff, 0, W - 0.16, HEAD - SILL - 0.14); l.position.set(w.x, (SILL + HEAD) / 2, -0.16); l.lookAt(w.x, (SILL + HEAD) / 2, -5); scene.add(l); lights.windows.push(l); }
   } else {
@@ -1409,8 +1414,8 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
   });
 
   // ---------------- volumetric sunbeams through the three windows + dust in the hero beam
-  const beamDefines = { STEPS: high ? 40 : mid ? 26 : 14 };
-  if (!low) beamDefines.USE_SHADOW = 1;
+  const beamDefines = { STEPS: high ? 24 : mid ? 20 : 14 }; // (40 on high cost ~30 ms a frame at 2x)
+  if (SUN_SHADOW) beamDefines.USE_SHADOW = 1;
   const beamU = {
     uSunL: kit.sunU.uSunL, uWins: kit.sunU.uWins, uColor: { value: new THREE.Color(1, 0.93, 0.8) }, uDensity: { value: 0.0 }, uTime: { value: 0 },
     uShadow: { value: null }, uShadowM: { value: new THREE.Matrix4() }, uInv: { value: new THREE.Matrix4() },
@@ -1471,7 +1476,7 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
   dGeo.setAttribute("seed", new THREE.BufferAttribute(seeds, 4));
   const dustU = { uSunL: kit.sunU.uSunL, uWins: kit.sunU.uWins, uTime: { value: 0 }, uScale: { value: 800 }, uColor: { value: new THREE.Color(1, 0.95, 0.85) }, uShadow: beamU.uShadow, uShadowM: beamU.uShadowM, uMin: { value: V3(-1.9, FL + 0.05, -3.6) }, uSize: { value: V3(4.4, CEIL - FL - 0.15, 3.42) } };
   const dust = new THREE.Points(dGeo, new THREE.ShaderMaterial({
-    defines: low ? {} : { USE_SHADOW: 1 }, uniforms: dustU, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    defines: SUN_SHADOW ? { USE_SHADOW: 1 } : {}, uniforms: dustU, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: /* glsl */ `
       #include <packing>
       ${APERTURE_GLSL}
