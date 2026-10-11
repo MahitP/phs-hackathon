@@ -66,6 +66,7 @@ The site runs in one of two modes:
 | LCD / GPIO | Real | Never touched |
 | Database | `data/skywindow.db` (real readings only) | `data/sim.db` |
 | Scenario controls | None | Operator page at `/sim` |
+| Dashboard label for the room reading | RASPBERRY PI / LIVE (or SENSOR OFFLINE) | BACKUP FEED |
 
 - **Separation:** the Pi backend never imports anything from `simulator/` (a test enforces this). The backup runs as its own process and wraps its *own* copy of the server code, so nothing it does can reach the Pi backend's readings, verdict or database.
 - **Mock readings:** these only exist when `SKYWINDOW_MOCK=1` is set explicitly. `scripts/dev.py` sets it for laptop development, and the dashboard then says DEV MODE.

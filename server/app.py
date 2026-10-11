@@ -157,6 +157,9 @@ def sensor_loop():
             state.update({
                 "time": now, "verdict": verdict, "sky": sky, "clarity": clar, "replay": replay_info,
                 "event": event, "mock": sensors.mock, "fires": fire_info,
+                # which source the indoor reading comes from: "pi" (Grove sensors), "dev" (laptop mock)
+                # or whatever a wrapping process declares on its sensor object (the backup says "backup")
+                "feed": getattr(sensors, "feed", "dev" if sensors.mock else "pi"),
                 "indoor": {"air": None if offline else round(air, 1), "light": None if light is None else round(light, 1),
                            "baseline": baseline, "rate_per_min": round(rate, 1), "stale_index": verdict["stale_index"],
                            "warming_up": warming, "offline": offline, "error": getattr(sensors, "error", None)},

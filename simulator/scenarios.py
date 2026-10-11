@@ -106,7 +106,8 @@ def apply_fires(fire_info):
 class SimSensors:
     """Simulated Grove air + light sensors following the active scenario. Never touches hardware."""
 
-    mock = True  # dashboard shows "dev mode" for the room sensor and its mock buttons work
+    mock = True  # keeps the dashboard's test buttons working
+    feed = "backup"  # the dashboard labels this room reading "BACKUP FEED"
     offline = False
     error = None
 
