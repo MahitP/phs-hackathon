@@ -3,7 +3,7 @@
     uvicorn simulator.app:app --host 0.0.0.0 --port 8001      (or: python scripts/sim.py)
 
 It runs the unchanged live-device server code (server/app.py) inside ITS OWN process and swaps in:
-  - simulated room sensors (simulator/scenarios.py) instead of the Grove ADC,
+  - room sensors driven by the classroom physics model (simulator/room.py) instead of the Grove ADC,
   - a console LCD instead of the real one,
   - its own database, data/sim.db.
 Outside air, weather and NASA fires stay real unless the active scenario overrides them.
@@ -25,11 +25,6 @@ os.environ["SKYWINDOW_DB"] = str(ROOT / "data" / "sim.db")  # forced, never the 
 
 from server import app as live  # noqa: E402  (this process's own copy of the server)
 from simulator import scenarios  # noqa: E402
-
-
-def _reset_smoothing():
-    live.air_smooth.value = None  # jump straight to the new scenario's room level
-    live.air_window.clear()
 
 
 class _SkyWithScenario:
@@ -58,7 +53,8 @@ class _FiresWithScenario:
         return getattr(self._real, name)
 
 
-live.sensors = scenarios.SimSensors(on_switch=_reset_smoothing)
+live.sensors = scenarios.SimSensors()  # room physics in simulator/room.py: values always change smoothly
+live.store.set_setting("air_baseline", None)  # data/sim.db only: start each run from a fresh clean-air baseline
 live.skydata = _SkyWithScenario(live.skydata)
 live.firewatch = _FiresWithScenario(live.firewatch)
 app = live.app
@@ -76,14 +72,35 @@ def sim_set(payload: dict = Body(...)):
     return scenarios.info()
 
 
+def sim_event(payload: dict = Body(...)):
+    """Trigger an indoor event: sanitizer | breath | marker | cleaner | cover, at distance near | arm | room."""
+    try:
+        scenarios.ROOM.trigger(payload.get("event"), payload.get("distance", "near"))
+    except KeyError:
+        raise HTTPException(400, f"unknown event; use one of {', '.join(list(scenarios.EVENTS) + ['cover'])}")
+    return scenarios.info()
+
+
+def sim_room(payload: dict = Body(...)):
+    """Room mode (auto | class | empty | window | door) and/or speed (1-60x for CO2 build-up/clearing)."""
+    try:
+        scenarios.ROOM.set_mode(payload.get("mode"), payload.get("speed"))
+    except (ValueError, TypeError):
+        raise HTTPException(400, "mode must be auto, class, empty, window or door; speed a number 1-60")
+    return scenarios.info()
+
+
 def control_page():
     return FileResponse(Path(__file__).with_name("control.html"))
 
 
+_before = len(app.router.routes)
 app.add_api_route("/api/sim", sim_info, methods=["GET"])
 app.add_api_route("/api/sim", sim_set, methods=["POST"], dependencies=live.writes)
+app.add_api_route("/api/sim/event", sim_event, methods=["POST"], dependencies=live.writes)
+app.add_api_route("/api/sim/room", sim_room, methods=["POST"], dependencies=live.writes)
 app.add_api_route("/sim", control_page, methods=["GET"], include_in_schema=False)
 # the dashboard's static files are mounted at "/", which would swallow these paths: put ours first
-_ours = app.router.routes[-3:]
-del app.router.routes[-3:]
+_ours = app.router.routes[_before:]
+del app.router.routes[_before:]
 app.router.routes[0:0] = _ours

@@ -40,57 +40,103 @@ def test_pi_backend_has_no_scenario_controls():
     assert client.post("/api/sim", json={"scenario": "smoke"}).status_code in (404, 405)
 
 
-# ---------- scenarios ----------
-def run(key, sky=REAL_SKY, seconds=0.0, rate=0.0):
+# ---------- room physics + presets ----------
+from simulator.room import RoomModel  # noqa: E402
+
+
+def room_at(co2=650.0, mode="class"):
+    r = RoomModel(mode=mode)
+    r.co2 = co2
+    return r
+
+
+def age(room, seconds):
+    """Pretend every active event started `seconds` ago."""
+    for p in room.pulses:
+        p["t0"] -= seconds
+
+
+def verdict(room, key="live", rate=0.0):
     scenarios.set_scenario(key)
-    scenarios._active["since"] -= seconds  # pretend the scenario has been running for a while
-    sensors = scenarios.SimSensors()
-    air = sensors.read_air()
-    return decide(air, BASELINE, rate, scenarios.apply_sky(sky), sensors.warming_up(), fires=scenarios.apply_fires(None))
+    return decide(room.read_air(), BASELINE + 15, rate, scenarios.apply_sky(REAL_SKY), scenarios.scenario().get("warmup", False),
+                  fires=scenarios.apply_fires(None))
 
 
 def test_clean_day_stuffy_room_opens():
-    assert run("clean_stuffy")["key"] == "open"
+    assert verdict(room_at(co2=1800), "clean_stuffy")["key"] == "open"
 
 
 def test_smoke_outside_keeps_shut():
     scenarios.set_scenario("smoke")
     assert scenarios.apply_sky(REAL_SKY)["us_aqi"] > 100
-    assert run("smoke")["key"] == "shut"
+    assert verdict(room_at(), "smoke")["key"] == "shut"
 
 
 def test_fire_upwind_turns_open_into_either():
-    v = run("fire")
+    v = verdict(room_at(co2=1800), "fire")
     assert v["key"] == "either" and any("upwind" in r for r in v["reasons"])
 
 
-def test_spike_rises_fast_enough_to_ventilate():
-    scenarios.set_scenario("spike")
-    scenarios._active["since"] -= 10
-    s = scenarios.SimSensors()
-    a = s.read_air()
-    scenarios._active["since"] -= 6
-    rate = (s.read_air() - a) / (6 / 60)
-    assert run("spike", seconds=16, rate=rate)["key"] == "ventilate"
+def test_sanitizer_near_surges_within_20_seconds_then_fades():
+    r = room_at()
+    before = r.read_air()
+    r.trigger("sanitizer", "near")
+    age(r, 20)
+    peak = r.read_air()
+    assert peak - before > 350                       # surges toward the MP503's upper range
+    rate = (peak - before) / (20 / 60)
+    assert verdict(r, rate=rate)["key"] == "ventilate"
+    age(r, 300)
+    assert r.read_air() - before < 80                # mostly gone after ~5 minutes
 
 
-def test_warmup_scenario():
-    assert run("warmup")["key"] == "warmup"
+def test_events_scale_with_distance_and_type():
+    def bump(kind, dist):
+        r = room_at()
+        b = r.read_air()
+        r.trigger(kind, dist)
+        age(r, 25)
+        return r.read_air() - b
+    assert bump("sanitizer", "near") > bump("sanitizer", "arm") > bump("sanitizer", "room")
+    assert bump("sanitizer", "near") > bump("cleaner", "near") > bump("marker", "near") > bump("breath", "near") > 20
 
 
-def test_live_scenario_keeps_real_data():
+def test_mode_switches_never_jump():
+    r = room_at(co2=1900)
+    a = r.read_air()
+    for mode in ("window", "empty", "door", "class", "auto"):
+        r.set_mode(mode)
+        b = r.read_air()
+        assert abs(b - a) < 15, mode                 # only noise; CO2 itself changes gradually
+        a = b
+
+
+def test_window_clears_co2_like_the_studies():
+    r = room_at(co2=2000, mode="window")
+    r.set_mode(speed=60)
+    for _ in range(15):                              # 15 x 5 s x 60 = 75 simulated minutes
+        r.last -= 5
+        r.read_air()
+    assert 2000 - r.co2 > 1000 and r.co2 < 900      # studies: opening windows cuts CO2 by ~1,000 ppm (class still inside)
+
+
+def test_full_class_builds_co2_into_the_measured_range():
+    r = room_at(co2=500, mode="class")
+    r.set_mode(speed=60)
+    for _ in range(10):                              # 50 simulated minutes
+        r.last -= 5
+        r.read_air()
+    assert 1300 < r.co2 < 2400                       # studies: school-hour averages 657-2,235 ppm, peaks ~3,000
+
+
+def test_warmup_preset():
+    assert verdict(room_at(), "warmup")["key"] == "warmup"
+
+
+def test_live_preset_keeps_real_outside_data():
     scenarios.set_scenario("live")
     assert scenarios.apply_sky(REAL_SKY) is REAL_SKY
     assert scenarios.apply_fires({"x": 1}) == {"x": 1}
-
-
-def test_scenario_switch_resets_smoothing_once():
-    calls = []
-    s = scenarios.SimSensors(on_switch=lambda: calls.append(1))
-    scenarios.set_scenario("live")
-    s.read_air()
-    s.read_air()
-    assert calls == [1]
 
 
 def test_feed_labels_identify_the_source_without_the_word_simulated():

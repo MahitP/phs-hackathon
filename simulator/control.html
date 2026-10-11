@@ -3,46 +3,124 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SkyWindow Scenarios</title>
+  <title>SkyWindow Operator</title>
   <style>
-    :root { --bg: #05070c; --ink: #e2e8f0; --muted: #8b95a7; --line: rgba(255,255,255,.14); --on: #c084fc; }
+    :root { --bg: #05070c; --ink: #e2e8f0; --muted: #8b95a7; --line: rgba(255,255,255,.14); --on: #60a5fa; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; padding: 24px 16px; }
-    main { max-width: 640px; margin: 0 auto; }
-    h1 { font-size: 1.3rem; margin: 0 0 4px; }
-    p { color: var(--muted); margin: 0 0 16px; }
-    button { display: block; width: 100%; text-align: left; background: transparent; color: var(--ink); border: 1px solid var(--line);
-      padding: 12px 14px; margin-bottom: 8px; font: inherit; cursor: pointer; }
-    button b { display: block; }
-    button span { color: var(--muted); font-size: .85rem; }
-    button.on { border-color: var(--on); background: rgba(192,132,252,.1); }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; padding: 16px; }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.15rem; margin: 0 0 2px; }
+    h2 { font-size: .72rem; letter-spacing: .14em; color: var(--muted); margin: 20px 0 8px; font-weight: 600; }
+    p { color: var(--muted); margin: 0 0 10px; }
     a { color: var(--on); }
-    #now { font-family: ui-monospace, monospace; font-size: .85rem; color: var(--muted); margin: 12px 0 18px; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; }
+    button, select { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 9px 12px; font: inherit; cursor: pointer; }
+    button:hover { border-color: var(--ink); }
+    button.on { border-color: var(--on); background: rgba(96,165,250,.12); }
+    select { padding: 8px; background: #0b1020; }
+    .live { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .live div { background: #0b1020; padding: 10px; }
+    .live b { display: block; font-size: 1.25rem; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .live span { font-size: .66rem; letter-spacing: .1em; color: var(--muted); }
+    .ev button { min-width: 150px; text-align: left; }
+    .ev button small { display: block; color: var(--muted); font-size: .72rem; }
+    #log { font: 12px/1.6 ui-monospace, monospace; color: var(--muted); margin-top: 8px; }
+    @media (max-width: 560px) { .live { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
 <body>
 <main>
-  <h1>SkyWindow scenarios</h1>
-  <p>Operator page for the backup backend on this port. The Raspberry Pi backend is not affected.
-     <a href="/">Open the dashboard</a></p>
-  <div id="now">Loading…</div>
-  <div id="list"></div>
+  <h1>SkyWindow operator · backup backend</h1>
+  <p>Drives the backup's room model. The Raspberry Pi backend is not affected. <a href="/" target="_blank">Open the dashboard ↗</a></p>
+
+  <div class="live">
+    <div><span>VERDICT</span><b id="v">–</b></div>
+    <div><span>STALE INDEX</span><b id="si">–</b></div>
+    <div><span>SENSOR (ADC)</span><b id="air">–</b></div>
+    <div><span>TREND /MIN</span><b id="rate">–</b></div>
+    <div><span>ROOM CO2 (MODEL)</span><b id="co2">–</b></div>
+    <div><span>PEOPLE</span><b id="occ">–</b></div>
+    <div><span>VENTILATION</span><b id="vent">–</b></div>
+    <div><span>OUTSIDE AQI</span><b id="aqi">–</b></div>
+  </div>
+
+  <h2>INDOOR EVENTS (REAL-TIME)</h2>
+  <div class="row" style="margin-bottom:8px">
+    <label for="dist" style="color:var(--muted);align-self:center">Distance from sensor</label>
+    <select id="dist">
+      <option value="near">Right next to it</option>
+      <option value="arm">Arm's length (~1 m)</option>
+      <option value="room">Across the room</option>
+    </select>
+  </div>
+  <div class="row ev" id="events"></div>
+
+  <h2>ROOM</h2>
+  <div class="row" id="modes">
+    <button data-mode="auto">PHS bell schedule</button>
+    <button data-mode="class">Class in session</button>
+    <button data-mode="empty">Empty room</button>
+    <button data-mode="door">Door open</button>
+    <button data-mode="window">Window open</button>
+  </div>
+  <p style="margin-top:8px">CO2 builds and clears gradually (room physics). Speed only fast-forwards that slow part; events always run in real time.</p>
+  <div class="row" id="speeds">
+    <button data-speed="1">1× real time</button>
+    <button data-speed="10">10×</button>
+    <button data-speed="30">30× (a class in ~2 min)</button>
+  </div>
+
+  <h2>OUTSIDE PRESETS</h2>
+  <div class="row" id="presets"></div>
+  <p id="about" style="margin-top:8px"></p>
+
+  <h2>RECENT</h2>
+  <div id="log"></div>
 </main>
 <script>
+  const $ = (id) => document.getElementById(id);
   const token = new URLSearchParams(location.search).get("token") || (() => { try { return localStorage.getItem("skywindow-token"); } catch (e) { return null; } })();
-  async function load() {
-    const info = await fetch("/api/sim").then((r) => r.json());
-    const st = await fetch("/api/now").then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    document.getElementById("now").textContent = "Active: " + info.label + (st ? " · verdict now: " + st.verdict.label : "");
-    document.getElementById("list").innerHTML = info.scenarios.map((s) =>
-      `<button data-k="${s.key}" class="${s.key === info.scenario ? "on" : ""}"><b>${s.label}</b><span>${s.about}</span></button>`).join("");
-    document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = async () => {
-      await fetch("/api/sim", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "X-SkyWindow-Token": token } : {}) },
-        body: JSON.stringify({ scenario: b.dataset.k }) });
-      setTimeout(load, 1500);
-    }));
+  const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "X-SkyWindow-Token": token } : {}) }, body: JSON.stringify(body) }).then((r) => r.json());
+  let built = false;
+
+  function build(info) {
+    $("events").innerHTML = info.events.map((e) => `<button data-ev="${e.key}" title="${e.basis}">${e.label}<small>${e.basis.split(";")[0].slice(0, 70)}…</small></button>`).join("")
+      + `<button data-ev="cover">Hand over light sensor<small>Light reading drops for ~10 s</small></button>`;
+    $("presets").innerHTML = info.scenarios.map((s) => `<button data-sc="${s.key}" title="${s.about}">${s.label}</button>`).join("");
+    document.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => post("/api/sim/event", { event: b.dataset.ev, distance: $("dist").value }).then(render)));
+    document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => post("/api/sim/room", { mode: b.dataset.mode }).then(render)));
+    document.querySelectorAll("[data-speed]").forEach((b) => (b.onclick = () => post("/api/sim/room", { speed: +b.dataset.speed }).then(render)));
+    document.querySelectorAll("[data-sc]").forEach((b) => (b.onclick = () => post("/api/sim", { scenario: b.dataset.sc }).then(render)));
+    built = true;
   }
-  load(); setInterval(load, 5000);
+
+  function render(info) {
+    if (!built) build(info);
+    const r = info.room;
+    $("co2").textContent = r.co2_ppm + " ppm";
+    $("occ").textContent = r.occupancy;
+    $("vent").textContent = r.ventilation;
+    document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === r.mode));
+    document.querySelectorAll("[data-speed]").forEach((b) => b.classList.toggle("on", +b.dataset.speed === r.speed));
+    document.querySelectorAll("[data-sc]").forEach((b) => b.classList.toggle("on", b.dataset.sc === info.scenario));
+    $("about").textContent = info.about;
+    $("log").innerHTML = r.log.map((l) => `${l.ago_s}s ago · ${l.text}`).join("<br>") || "–";
+  }
+
+  async function tick() {
+    try {
+      const [info, now] = await Promise.all([fetch("/api/sim").then((r) => r.json()), fetch("/api/now").then((r) => (r.ok ? r.json() : null))]);
+      render(info);
+      if (now) {
+        $("v").textContent = now.verdict.label; $("v").style.color = now.verdict.color;
+        $("si").textContent = now.indoor.stale_index ?? "–";
+        $("air").textContent = now.indoor.air ?? "–";
+        $("rate").textContent = now.indoor.rate_per_min;
+        $("aqi").textContent = now.sky ? now.sky.us_aqi : "–";
+      }
+    } catch (e) {}
+  }
+  tick(); setInterval(tick, 1000);
 </script>
 </body>
 </html>

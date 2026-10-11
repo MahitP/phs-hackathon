@@ -70,7 +70,16 @@ The site runs in one of two modes:
 
 - **Separation:** the Pi backend never imports anything from `simulator/` (a test enforces this). The backup runs as its own process and wraps its *own* copy of the server code, so nothing it does can reach the Pi backend's readings, verdict or database.
 - **Mock readings:** these only exist when `SKYWINDOW_MOCK=1` is set explicitly. `scripts/dev.py` sets it for laptop development, and the dashboard then says DEV MODE.
-- **Scenarios** (picked at `http://<pi>:8001/sim`): normal classroom · clean day + stuffy room → OPEN · chemical spike → VENTILATE · smoke outside → SHUT · fire upwind → EITHER + Fire Watch · sensor warm-up.
+- **Operator page** (`http://<pi>:8001/sim`, not part of the dashboard):
+  - **Indoor events, running in real time** at three distances (next to the sensor, arm's length, across the room):
+    - hand sanitizer: ethanol surges within ~20 s and is mostly gone in 1–2 min
+    - breath: a small humid/VOC bump that fades in ~30 s
+    - dry-erase marker
+    - spray cleaner: a long tail that clears with ventilation
+    - hand over the light sensor
+  - **Room modes:** PHS bell schedule, class in session, empty, door open, window open. CO₂ follows a mass balance, so changes are always gradual. A 1×/10×/30× speed control fast-forwards only the slow CO₂ part.
+  - **Outside presets:** real sky, clean day, smoke, fire upwind, sensor warm-up.
+  - **Research basis:** these events change the *indoor* stale index, never the outdoor AQI. They draw on the Winsen MP503 datasheet and module specs, the Seeed wiki, classroom CO₂ studies, hand-rub evaporation studies, the 101-marker VOC study and cleaning-spray decay studies (`simulator/room.py`).
 - **Running it:** `setup_pi.sh` installs both services. On a laptop, run `python scripts/dev.py` (8000) and `python scripts/sim.py` (8001).
 
 ## Hardware

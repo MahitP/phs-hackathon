@@ -5,3 +5,4 @@ data/skywindow.db
 data/audio/
 ml/model.joblib
 .venv/
+data/sim.db
