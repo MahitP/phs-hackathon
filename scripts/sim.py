@@ -1,6 +1,6 @@
 """Run the SkyWindow backup backend (simulator/app.py) on port 8001, next to the Pi backend on 8000.
 
-    python scripts/sim.py          ->  dashboard http://localhost:8001   scenarios http://localhost:8001/sim
+    python scripts/sim.py          ->  dashboard http://localhost:8001/app.html   scenarios http://localhost:8001/sim
 
 It is a separate process with its own database (data/sim.db); it cannot touch the Raspberry Pi
 backend's sensors, LCD, readings or stored data.

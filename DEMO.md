@@ -10,7 +10,7 @@
 - [ ] Backup demo video downloaded locally, in case the Wi-Fi dies
 - [ ] Spare Pi (Pi B) flashed and tested with the same code
 
-- [ ] Backup ready: dashboard at `http://<pi-ip>:8001` with scenarios at `http://<pi-ip>:8001/sim`. If the Pi's sensor misbehaves, demo from the backup, and tell the judges it's the backup with a test scenario (it uses scripted indoor readings and, in some scenarios, scripted outside air).
+- [ ] Backup ready: dashboard at `http://<pi-ip>:8001/app.html` with scenarios at `http://<pi-ip>:8001/sim`. If the Pi's sensor misbehaves, demo from the backup, and tell the judges it's the backup with a test scenario (it uses scripted indoor readings and, in some scenarios, scripted outside air).
 
 ## Script
 1. **Hook (15 s).** Hold up a photo of the orange Princeton sky. *"June 7, 2023. Who remembers this? That day, opening your window was the worst thing you could do. Most days, it's the best thing for a stuffy room. So how do you know?"*

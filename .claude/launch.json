@@ -9,6 +9,12 @@
     },
     {
       "name": "skywindow-sim",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["scripts/sim.py"],
+      "port": 8001
+    },
+    {
+      "name": "skywindow-sim-windows",
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["scripts/sim.py"],
       "port": 8001
