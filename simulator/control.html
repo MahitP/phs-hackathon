@@ -25,6 +25,8 @@
     .ev button { min-width: 150px; text-align: left; }
     .ev button small { display: block; color: var(--muted); font-size: .72rem; }
     #log { font: 12px/1.6 ui-monospace, monospace; color: var(--muted); margin-top: 8px; }
+    #why { border: 1px solid var(--line); border-top: 0; padding: 10px; color: var(--ink); margin: 0; }
+    #why span { color: var(--muted); }
     @media (max-width: 560px) { .live { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
@@ -43,6 +45,7 @@
     <div><span>VENTILATION</span><b id="vent">–</b></div>
     <div><span>OUTSIDE AQI</span><b id="aqi">–</b></div>
   </div>
+  <p id="why"><span>Why:</span> –</p>
 
   <h2>INDOOR EVENTS (REAL-TIME)</h2>
   <div class="row" style="margin-bottom:8px">
@@ -53,6 +56,9 @@
       <option value="room">Across the room</option>
     </select>
   </div>
+  <p>Right next to it: the vapour plume hits the sensor within seconds. Arm's length: only about a tenth of the plume
+    reaches it. Across the room: nothing reaches it directly; only what mixes into the room air does, over a few minutes,
+    so the reading creeps up instead of spiking. The sensor flattens out at high levels, so repeated events don't add up forever.</p>
   <div class="row ev" id="events"></div>
 
   <h2>ROOM</h2>
@@ -63,7 +69,8 @@
     <button data-mode="door">Door open</button>
     <button data-mode="window">Window open</button>
   </div>
-  <p style="margin-top:8px">CO2 builds and clears gradually (room physics). Speed only fast-forwards that slow part; events always run in real time.</p>
+  <p style="margin-top:8px">CO2 builds and clears gradually (room physics). Speed only fast-forwards that slow part; events always run
+    in real time. The trend the device judges stays at real-time pace, so a fast-forwarded class filling up never looks like a chemical spike.</p>
   <div class="row" id="speeds">
     <button data-speed="1">1× real time</button>
     <button data-speed="10">10×</button>
@@ -85,7 +92,8 @@
 
   function build(info) {
     $("events").innerHTML = info.events.map((e) => `<button data-ev="${e.key}" title="${e.basis}">${e.label}<small>${e.basis.split(";")[0].slice(0, 70)}…</small></button>`).join("")
-      + `<button data-ev="cover">Hand over light sensor<small>Light reading drops for ~10 s</small></button>`;
+      + `<button data-ev="cover">Hand over light sensor<small>Light reading drops for ~10 s</small></button>`
+      + `<button data-ev="clear">Clear events<small>Remove everything still lingering from earlier events</small></button>`;
     $("presets").innerHTML = info.scenarios.map((s) => `<button data-sc="${s.key}" title="${s.about}">${s.label}</button>`).join("");
     document.querySelectorAll("[data-ev]").forEach((b) => (b.onclick = () => post("/api/sim/event", { event: b.dataset.ev, distance: $("dist").value }).then(render)));
     document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => post("/api/sim/room", { mode: b.dataset.mode }).then(render)));
@@ -117,6 +125,10 @@
         $("air").textContent = now.indoor.air ?? "–";
         $("rate").textContent = now.indoor.rate_per_min;
         $("aqi").textContent = now.sky ? now.sky.us_aqi : "–";
+        const label = document.createElement("span"), base = document.createElement("span");
+        label.textContent = "Why: ";
+        base.textContent = now.indoor.baseline != null ? ` · clean-air baseline ${Math.round(now.indoor.baseline)}` : "";
+        $("why").replaceChildren(label, now.verdict.reasons.join(" · "), base);
       }
     } catch (e) {}
   }

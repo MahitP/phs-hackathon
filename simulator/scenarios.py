@@ -22,20 +22,34 @@ NO_FIRES = {"available": True, "source": "scenario (no fires)", "within_50km": 0
 SCENARIOS = {
     "live": {
         "label": "Real sky, school-day room",
-        "about": "Outside air, weather and fires are the real live data. The room follows today's PHS bell schedule.",
+        "about": "Outside air, weather and fires are the real live data. The room follows today's PHS bell schedule, in real time.",
         "room": "auto",
+        "speed": 1,
     },
     "clean_stuffy": {
         "label": "Clean day, stuffy room",
-        "about": "Clean sky (AQI 22) and a full, closed classroom. The room goes stale as CO2 builds: expect OPEN THE WINDOW "
-                 "once the stale index passes ~40 (raise the speed to get there in a couple of minutes).",
+        "about": "Clean sky (AQI 22) and a full classroom with the windows shut. With air this clean outside, SkyWindow "
+                 "says OPEN THE WINDOW straight away; as CO2 builds, the reason changes to 'your room is staler than the sky'.",
         "room": "class",
         "sky": {"us_aqi": 22, "pm2_5": 4.1, "aod": 0.06, "ozone": 52},
         "fires": NO_FIRES,
     },
+    "moderate_stuffy": {
+        "label": "Moderate sky, class in session",
+        "about": "Moderate sky (AQI 72) and a full classroom with the windows shut, fast-forwarded 30x. EITHER WAY while the "
+                 "room is fresh; once CO2 is ~1,000 ppm above the room's cleanest air today (stale index 40, ~40 class-minutes) "
+                 "the room is worse than the sky and it flips to "
+                 "OPEN THE WINDOW. Press 'Window open' to watch it air out and go back to EITHER WAY.",
+        "room": "class",
+        "speed": 30,
+        "sky": {"us_aqi": 72, "pm2_5": 21.5, "aod": 0.18, "ozone": 74},
+        "fires": NO_FIRES,
+    },
     "spike": {
         "label": "Chemical spike indoors",
-        "about": "Hand sanitizer right next to the sensor: the reading surges within ~20 s. Expect VENTILATE NOW (unless the sky is bad).",
+        "about": "Hand sanitizer right next to the sensor: the reading surges within ~20 s, so VENTILATE NOW. As the vapour "
+                 "clears it steps down (OPEN THE WINDOW while the room is still stale under a clean or moderate sky), then "
+                 "back to normal in a few minutes. Under a smoky sky it stays KEEP IT SHUT and suggests a purifier instead.",
         "event": "sanitizer",
     },
     "smoke": {
@@ -72,8 +86,9 @@ def set_scenario(key):
     s = SCENARIOS[key]
     with _lock:
         _active.update(key=key, since=time.time())
-    if s.get("room"):
-        ROOM.set_mode(s["room"])          # the room drifts there naturally (CO2 mass balance)
+    ROOM.clear_events()                   # each preset starts without the last one's leftover indoor events
+    if s.get("room") or s.get("speed"):
+        ROOM.set_mode(s.get("room"), s.get("speed"))  # the room drifts there naturally (CO2 mass balance)
     if s.get("event"):
         ROOM.trigger(s["event"], "near")  # a real-time pulse on top of the current room
 
@@ -103,6 +118,22 @@ def apply_sky(sky):
 
 def apply_fires(fire_info):
     return scenario().get("fires", fire_info)
+
+
+class RealTimeTrend:
+    """Keeps the server's rise-rate ("rising fast") rule at real-time pace while the room is fast-forwarded.
+
+    The server smooths the air reading with an EMA once per tick before measuring its rise, so the same EMA
+    is applied to the room's fast-forward offset: subtracting the raw offset would let the smoothing lag
+    show up as a fake rise whenever the CO2 trend turns (e.g. opening the window at 30x)."""
+
+    def __init__(self, room=None, alpha=0.3):
+        self.room, self.alpha, self.ema = room or ROOM, alpha, None
+
+    def adjust(self, smoothed_air):
+        ff = self.room.ff_offset
+        self.ema = ff if self.ema is None else self.alpha * ff + (1 - self.alpha) * self.ema
+        return smoothed_air - self.ema
 
 
 class SimSensors:

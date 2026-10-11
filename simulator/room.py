@@ -7,10 +7,16 @@ Produces what the Grove sensors on a Grove Base HAT would print (grove.py ADC.re
 Everything changes continuously - switching modes or triggering an event never makes the reading jump:
   * CO2 follows a single-zone mass balance  dC/dt = G*N/V - ACH*(C - C_out)  (occupancy + ventilation),
     and the MP503's response to people (bio-effluent VOCs, humidity) follows CO2.
-  * Events (sanitizer, breath, marker, cleaner) are pulses with a source/evaporation curve, the sensor's
-    response/recovery times, and a room-mixing tail that clears at the current ventilation rate.
+  * Events (sanitizer, breath, marker, cleaner) have two parts: a vapour plume that reaches the sensor in
+    seconds if the source is close (diluting roughly with distance squared), and the share that mixes into
+    the room air, arriving over a few minutes and cleared at the current ventilation rate. Across the room,
+    only the mixed share reaches the sensor, so it rises slowly instead of spiking.
+  * The metal-oxide sensor's response flattens out at high concentrations, so stacked events saturate
+    instead of adding up past the ADC's range.
   * "speed" fast-forwards only the slow room processes (CO2 build-up / clearing), so a 50-minute class
-    can be shown in about two minutes; event pulses always run in real time.
+    can be shown in about two minutes; events (and their clearing from the room air) always run in real
+    time. The trend the server measures (its "rising fast" spike rule) is kept at real-time pace via
+    ff_offset, so fast-forwarding a filling classroom never looks like a chemical spike.
 
 Research basis (see EVENTS[...]["basis"] and the README section "Backup backend"):
   sensor: Seeed wiki (indoor readings ~138-141 on a Pi), Winsen MP503 datasheet (10-1000 ppm alcohol),
@@ -38,16 +44,23 @@ GEN_LPS = 0.0050        # L/s CO2 per seated person
 C_OUT = 425.0           # ppm outdoors
 ACH = {"closed": 1.2, "door": 3.0, "window": 7.0}   # air changes per hour
 AIR_BASE = 132.0        # MP503 on a Grove Base HAT reads ~132-141 in ordinary indoor air (Seeed wiki)
-K_BIO = 6.0             # ADC units per +100 ppm CO2 of people (bio-effluent VOCs + humidity) - assumption
+# ADC units per +100 ppm CO2 of people (bio-effluent VOCs + humidity) - assumption, set so a closed classroom
+# reaches the server's "stale" index (40 = +100 units) ~1,000 ppm above its cleanest air (~1,400-1,700 ppm),
+# around where classroom guidance says to air out
+K_BIO = 10.0
 NOISE = 2.0
+SATURATE = 800.0        # MOS response flattens out: units above clean air approach this (ADC tops out at 1000)
+MIX_S = 240.0           # s for vapour released in the room to mix through ~200 m3 of still classroom air
 
-# distance from the sensor -> fraction of the near-field peak that reaches it
-DISTANCE = {"near": 1.0, "arm": 0.45, "room": 0.08}
+# distance from the sensor -> (share of the near-field plume that reaches it, how much later it peaks)
+# the plume dilutes roughly with distance squared (~0.3 m -> ~1 m is about a tenth); across the room only
+# the share that mixes into the room air reaches the sensor
+DISTANCE = {"near": (1.0, 1.0), "arm": (0.1, 2.0), "room": (0.0, 1.0)}
 
 EVENTS = {
     "sanitizer": {
         "label": "Hand sanitizer",
-        "peak": 540, "rise_s": 22, "fall_s": 45, "tail": 0.03, "room_mix": True,  # 3 mL ethanol mixed in 200 m3 ~ 4 ppm
+        "peak": 650, "rise_s": 22, "fall_s": 45, "tail": 0.03, "room_mix": True,  # 3 mL ethanol mixed in 200 m3 ~ 4 ppm
         "basis": "Ethanol evaporates from skin with a ~12 s half-life; hands dry in 24-67 s (1-3 mL); vapour near the "
                  "hands peaks at ~20-30 s at thousands of ppm. MP503 responds in <=20 s, recovers in <=60 s.",
     },
@@ -83,6 +96,7 @@ class RoomModel:
         self.co2 = 650.0
         self.pulses = []          # active event pulses
         self.cover_until = 0.0
+        self.ff_offset = 0.0      # how far fast-forwarding has moved the reading beyond real-time pace (ADC units)
         self.last = time.time()
         self.drift_phase = random.uniform(0, 6.28)
         self.log = []             # recent events, newest first (for the operator page)
@@ -102,13 +116,24 @@ class RoomModel:
             self.cover_until = time.time() + 10
             self._note("Hand over the light sensor")
             return
+        if kind == "clear":
+            self.clear_events()
+            self._note("Cleared indoor events")
+            return
         if kind not in EVENTS:
             raise KeyError(kind)
         e = EVENTS[kind]
+        share, lag = DISTANCE.get(distance, DISTANCE["near"])
+        mixed = e["tail"] if e["room_mix"] else 0.0
         with self._lock:
-            self.pulses.append({"kind": kind, "t0": time.time(), "peak": e["peak"] * DISTANCE.get(distance, 1.0),
-                                "rise": e["rise_s"], "fall": e["fall_s"], "tail": e["tail"], "mix": e["room_mix"]})
+            self.pulses.append({"kind": kind, "t0": time.time(), "plume": e["peak"] * (1 - mixed) * share,
+                                "mixed": e["peak"] * mixed, "rise": e["rise_s"] * lag, "fall": e["fall_s"] * lag})
+            del self.pulses[:-12]  # the oldest ones have long faded by then
         self._note(f"{e['label']} ({distance})")
+
+    def clear_events(self):
+        with self._lock:
+            self.pulses = []
 
     def _note(self, text):
         self.log.insert(0, {"t": time.time(), "text": text})
@@ -143,23 +168,31 @@ class RoomModel:
         self.last = now
         n, vent = self.occupancy_and_ventilation(now)
         gen = n * GEN_LPS / 1000.0 / ROOM_V * 1e6            # ppm per second
-        self.co2 += dt * (gen - ACH[vent] / 3600.0 * (self.co2 - C_OUT))
+        dco2 = dt * (gen - ACH[vent] / 3600.0 * (self.co2 - C_OUT))
+        self.co2 += dco2
+        # the part of this change that only happened because of fast-forwarding (for the real-time trend)
+        self.ff_offset += K_BIO * dco2 / 100.0 * (1 - 1 / self.speed)
         return n, vent
 
     def _pulses(self, now, vent):
         total, keep = 0.0, []
+        k_vent = ACH[vent] / 3600.0                            # room air is cleared at the ventilation rate (events: real time)
+        k_mix = 1 / MIX_S
         for p in self.pulses:
-            age = now - p["t0"]
-            rise = 1 - math.exp(-age / (p["rise"] / 2.0))
-            sensor = math.exp(-max(0.0, age - p["rise"]) / p["fall"])
-            # what is left mixed into the room clears at the ventilation rate (real time, scaled by speed)
-            room = p["tail"] * math.exp(-max(0.0, age - p["rise"]) * ACH[vent] * self.speed / 3600.0) if p["mix"] else 0.0
-            v = p["peak"] * rise * ((1 - p["tail"]) * sensor + room)
+            age = max(0.0, now - p["t0"])
+            # plume: reaches the sensor within its rise time, then the sensor recovers as it passes
+            plume = p["plume"] * (1 - math.exp(-age / (p["rise"] / 2.0))) * math.exp(-max(0.0, age - p["rise"]) / p["fall"])
+            # mixed share: spreads through the room over MIX_S while ventilation removes it
+            if abs(k_mix - k_vent) < 1e-9:
+                mixed = p["mixed"] * k_mix * age * math.exp(-k_mix * age)
+            else:
+                mixed = p["mixed"] * k_mix / (k_mix - k_vent) * (math.exp(-k_vent * age) - math.exp(-k_mix * age))
+            v = plume + mixed
             total += v
-            if v > 0.5 or age < p["rise"] * 2:
+            if v > 0.5 or age < max(p["rise"] * 2, MIX_S):
                 keep.append(p)
         self.pulses = keep
-        return total
+        return SATURATE * (1 - math.exp(-total / SATURATE))
 
     def read_air(self):
         now = time.time()

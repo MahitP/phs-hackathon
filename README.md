@@ -88,14 +88,14 @@ The site runs in one of two modes:
 - **Separation:** the Pi backend never imports anything from `simulator/` (a test enforces this). The backup runs as its own process and wraps its *own* copy of the server code, so nothing it does can reach the Pi backend's readings, verdict or database.
 - **Mock readings:** these only exist when `SKYWINDOW_MOCK=1` is set explicitly. `scripts/dev.py` sets it for laptop development, and the dashboard then says DEV MODE.
 - **Operator page** (`http://<pi>:8001/sim`, not part of the dashboard):
-  - **Indoor events, running in real time** at three distances (next to the sensor, arm's length, across the room):
-    - hand sanitizer: ethanol surges within ~20 s and is mostly gone in 1–2 min
-    - breath: a small humid/VOC bump that fades in ~30 s
-    - dry-erase marker
-    - spray cleaner: a long tail that clears with ventilation
+  - **Indoor events, running in real time** at three distances. Right next to the sensor, the vapour plume hits it within seconds. At arm's length, only about a tenth of the plume reaches it. From across the room, nothing reaches it directly: only the share that mixes into the room air does, over about 4 minutes, so the reading creeps up instead of spiking. The metal-oxide sensor's response flattens out at high levels, so repeated events saturate instead of adding up. "Clear events" removes whatever is still lingering.
+    - hand sanitizer: ethanol surges within ~20 s and is mostly gone in 1–2 min (VENTILATE NOW up close, a brief one at arm's length, almost nothing from across the room)
+    - breath: a small humid/VOC bump that fades in ~30 s (only right next to the sensor)
+    - dry-erase marker: a slower alcohol rise, noticeable only up close
+    - spray cleaner: a strong plume plus a long tail in the room air that clears with ventilation
     - hand over the light sensor
-  - **Room modes:** PHS bell schedule, class in session, empty, door open, window open. CO₂ follows a mass balance, so changes are always gradual. A 1×/10×/30× speed control fast-forwards only the slow CO₂ part.
-  - **Outside presets:** real sky, clean day, smoke, fire upwind, sensor warm-up.
+  - **Room modes:** PHS bell schedule, class in session, empty, door open, window open. CO₂ follows a mass balance, so changes are always gradual. A closed, full classroom crosses the stale threshold (stale index 40: CO₂ about 1,000 ppm above the room's cleanest air of the day, so roughly 1,400–1,700 ppm) about 40 minutes into a class; with the window open it stays near outdoor levels. A 1×/10×/30× speed control fast-forwards only the slow CO₂ part, and the trend the device judges stays at real-time pace, so a fast-forwarded class never looks like a chemical spike.
+  - **Outside presets:** real sky, clean day, moderate sky with a class in session (EITHER WAY until the room goes stale, then OPEN THE WINDOW), chemical spike, smoke, fire upwind, sensor warm-up. Each preset clears leftover indoor events. The page shows the verdict's reasons and the clean-air baseline, so you can see why it says what it says.
   - **Research basis:** these events change the *indoor* stale index, never the outdoor AQI. They draw on the Winsen MP503 datasheet and module specs, the Seeed wiki, classroom CO₂ studies, hand-rub evaporation studies, the 101-marker VOC study and cleaning-spray decay studies (`simulator/room.py`).
 - **Running it:** `setup_pi.sh` installs both services. On a laptop, run `python scripts/dev.py` (8000) and `python scripts/sim.py` (8001).
 

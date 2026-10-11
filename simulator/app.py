@@ -54,6 +54,16 @@ class _FiresWithScenario:
 
 
 live.sensors = scenarios.SimSensors()  # room physics in simulator/room.py: values always change smoothly
+_rate_per_min = live.rate_per_min
+_trend = scenarios.RealTimeTrend(scenarios.ROOM, live.air_smooth.alpha)
+
+
+def _real_time_rate(now, value):
+    """The server's rise rate at real-time pace: fast-forwarded CO2 build-up must not trip its spike rule."""
+    return _rate_per_min(now, _trend.adjust(value))
+
+
+live.rate_per_min = _real_time_rate  # sensor_loop looks the name up on the module each tick
 live.store.set_setting("air_baseline", None)  # data/sim.db only: start each run from a fresh clean-air baseline
 live.skydata = _SkyWithScenario(live.skydata)
 live.firewatch = _FiresWithScenario(live.firewatch)
@@ -73,11 +83,11 @@ def sim_set(payload: dict = Body(...)):
 
 
 def sim_event(payload: dict = Body(...)):
-    """Trigger an indoor event: sanitizer | breath | marker | cleaner | cover, at distance near | arm | room."""
+    """Trigger an indoor event: sanitizer | breath | marker | cleaner | cover | clear, at distance near | arm | room."""
     try:
         scenarios.ROOM.trigger(payload.get("event"), payload.get("distance", "near"))
     except KeyError:
-        raise HTTPException(400, f"unknown event; use one of {', '.join(list(scenarios.EVENTS) + ['cover'])}")
+        raise HTTPException(400, f"unknown event; use one of {', '.join(list(scenarios.EVENTS) + ['cover', 'clear'])}")
     return scenarios.info()
 
 
