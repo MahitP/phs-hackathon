@@ -56,6 +56,27 @@ The site runs in one of two modes:
 - **Device mode:** served by the Pi at `http://<pi-ip>:8000`, using its live sensors.
 - **Showcase mode:** opened anywhere without the Pi. For example, serve `web/` from any static host, or run `python -m http.server -d web`. The page fetches the sky straight from Open-Meteo and simulates the room sensor, so judges can try it on their own phones.
 
+## Live device + simulator (two backends at once)
+
+The same server code runs twice on the Pi:
+
+| | Live device (`:8000`) | Simulator (`:8001`) |
+|---|---|---|
+| Indoor air | Real Grove sensors | Simulated classroom (`server/sim.py`) |
+| Outside air, weather, NASA fires | Real | The same real data, unless a scenario overrides it (flagged on screen) |
+| LCD / GPIO | Real | Never touched |
+| Database | `data/skywindow.db` | `data/sim.db` |
+
+Simulator scenarios (pick them on the NOW tab):
+- **Normal classroom, real sky**
+- **Clean day, stuffy room** → OPEN
+- **Chemical spike indoors** → VENTILATE
+- **Wildfire smoke outside** → SHUT + alert
+- **Fire upwind, air still clean** → EITHER + Fire Watch
+- **Sensor warming up**
+
+Both dashboards link to each other (**SIMULATOR ↗ / LIVE DEVICE ↗**), and everything from the simulator is labeled 🧪 SIMULATOR, so the demo never depends on a cable behaving. `setup_pi.sh` installs both as services. On a laptop, run `python scripts/dev.py` (8000) and `python scripts/sim.py` (8001). Tests: `tests/test_sim.py`.
+
 ## Hardware
 
 - Raspberry Pi with a Grove Base HAT

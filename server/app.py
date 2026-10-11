@@ -17,6 +17,10 @@ from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")  # before modules that read env vars
+if os.environ.get("SKYWINDOW_SIM") == "1":
+    # SIMULATOR backend: never touch the real sensors/LCD and never write into the live device's database
+    os.environ["SKYWINDOW_MOCK"] = "1"
+    os.environ.setdefault("SKYWINDOW_DB", str(Path(__file__).resolve().parents[1] / "data" / "sim.db"))
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.responses import FileResponse
@@ -25,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from device.hw import RollingMin, Smoother, get_sensors
 from device.lcd import get_lcd
 from ml.features import N_FEATURES, features
-from server import clarity, fires as firewatch, report, sky as skydata, store, voice
+from server import clarity, fires as firewatch, report, sim, sky as skydata, store, voice
 from server.decide import decide
 from server.replay import Replay
 from server.sky import LAT, LON, compass
@@ -39,7 +43,8 @@ ANNOUNCE_MIN_GAP = 120  # seconds between automatic announcements (each one cost
 REPORT_COOLDOWN = 15  # seconds a report is reused for repeat requests while the verdict is unchanged
 MOCK_ACTIONS = ("spike", "cover")
 
-sensors = get_sensors()
+sensors = sim.SimSensors() if sim.ENABLED else get_sensors()
+PEER_PORT = os.environ.get("SKYWINDOW_PEER_PORT")  # port of the other backend (live <-> simulator), for the switch link
 lcd = get_lcd()
 replay = Replay()
 air_smooth, light_smooth = Smoother(0.3), Smoother(0.3)
@@ -94,6 +99,9 @@ def sensor_loop():
     while True:
         try:
             now = time.time()
+            if sim.ENABLED and sim.consume_change():
+                air_smooth.value = None  # jump straight to the new scenario's room level
+                air_window.clear()
             air = air_smooth.update(sensors.read_air())
             light = light_smooth.update(sensors.read_light())
             rate = rate_per_min(now, air)
@@ -108,6 +116,8 @@ def sensor_loop():
 
             replay_sky, replay_info = replay.current()
             sky = replay_sky or skydata.latest()  # never blocks on the network
+            if sim.ENABLED and not replay_info:
+                sky = sim.apply_sky(sky)  # real data unless the scenario overrides it
             when = None
             if replay_info:  # sun position for the replayed hour (EDT = UTC-4)
                 when = datetime.fromisoformat(sky["time"]).replace(tzinfo=timezone.utc) + timedelta(hours=4)
@@ -118,6 +128,8 @@ def sensor_loop():
                 # so it would contradict the orange sky; the dashboard shows haze transmission instead.
                 clar["model_clarity"] = None
             fire_info = None if replay_info else firewatch.summarize(firewatch._cache["fires"], (sky or {}).get("wind_dir"))
+            if sim.ENABLED and not replay_info:
+                fire_info = sim.apply_fires(fire_info)
             verdict = decide(air, baseline, rate, sky, warming, fires=fire_info, prev=state["verdict"])
 
             event = None
@@ -141,6 +153,7 @@ def sensor_loop():
             state.update({
                 "time": now, "verdict": verdict, "sky": sky, "clarity": clar, "replay": replay_info,
                 "event": event, "mock": sensors.mock, "fires": fire_info,
+                "sim": sim.info() if sim.ENABLED else None, "peer_port": PEER_PORT,
                 "indoor": {"air": round(air, 1), "light": round(light, 1), "baseline": baseline,
                            "rate_per_min": round(rate, 1), "stale_index": verdict["stale_index"],
                            "warming_up": warming},
@@ -284,6 +297,24 @@ def api_label(payload: dict = Body(...)):
     store.log_label(label.strip(), ind.get("air"), ind.get("baseline"), ind.get("rate_per_min"),
                     ind.get("light"))
     return {"ok": True}
+
+
+@app.get("/api/sim")
+def api_sim():
+    if not sim.ENABLED:
+        raise HTTPException(404, "this is the live device; the simulator runs as a separate backend (SKYWINDOW_SIM=1)")
+    return sim.info()
+
+
+@app.post("/api/sim", dependencies=writes)
+def api_sim_set(payload: dict = Body(...)):
+    if not sim.ENABLED:
+        raise HTTPException(404, "this is the live device; scenarios only exist on the simulator")
+    try:
+        sim.set_scenario(payload.get("scenario"))
+    except KeyError:
+        raise HTTPException(400, f"unknown scenario; use one of {', '.join(sim.SCENARIOS)}")
+    return sim.info()
 
 
 @app.post("/api/mock/{action}", dependencies=writes)

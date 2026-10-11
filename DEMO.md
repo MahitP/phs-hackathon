@@ -10,6 +10,8 @@
 - [ ] Backup demo video downloaded locally, in case the Wi-Fi dies
 - [ ] Spare Pi (Pi B) flashed and tested with the same code
 
+- [ ] Simulator open in a second tab (`http://<pi-ip>:8001`) as a backup. If a sensor or the LCD misbehaves, switch with **SIMULATOR ↗** and use the scenario buttons (Clean day → OPEN, Chemical spike → VENTILATE, Smoke outside → SHUT, Fire upwind → Fire Watch). Say clearly that it's the simulator.
+
 ## Script
 1. **Hook (15 s).** Hold up a photo of the orange Princeton sky. *"June 7, 2023. Who remembers this? That day, opening your window was the worst thing you could do. Most days, it's the best thing for a stuffy room. So how do you know?"*
 2. **The device (15 s).** It sits on the windowsill. *"SkyWindow watches the sky above you and the air in your room, and gives you one answer."* Point at the green LCD showing **OPEN THE WINDOW**.

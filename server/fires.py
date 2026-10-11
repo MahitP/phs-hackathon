@@ -6,6 +6,7 @@ fire radiative power (FRP, in megawatts) as a size measure, and only call it a s
 sizeable fires are UPWIND of PHS (i.e. the wind is blowing from the fire toward us).
 """
 import csv
+from datetime import datetime, timedelta
 import io
 import math
 import time
@@ -69,8 +70,13 @@ def summarize(fires, wind_from_deg):
     if fires is None:
         return {"available": False}
     upwind = []
+    # only fires seen in the last 48 h can be sending smoke now; older hotspots stay on the map only
+    newest = max((f["date"] for f in fires), default=None)
+    recent_from = (datetime.strptime(newest, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d") if newest else None
     if wind_from_deg is not None:
         for f in fires:
+            if recent_from and f["date"] < recent_from:
+                continue
             diff = abs((f["bearing"] - wind_from_deg + 180) % 360 - 180)
             if diff <= UPWIND_HALF_ANGLE and f["km"] <= UPWIND_KM:
                 upwind.append(f)
@@ -83,7 +89,7 @@ def summarize(fires, wind_from_deg):
         "within_100km": sum(1 for f in fires if f["km"] <= 100),
         "within_300km": len(fires),
         "nearest": nearest,
-        "upwind_count": len(upwind),
+        "upwind_count": len(upwind),  # last 48 h only
         "upwind_frp_150km": round(near_upwind_frp, 1),
         "smoke_risk": near_upwind_frp >= SMOKE_RISK_FRP,
         "largest_frp": max((f["frp"] for f in fires), default=0),

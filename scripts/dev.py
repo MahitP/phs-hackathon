@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("SKYWINDOW_MOCK", "1")
+os.environ.setdefault("SKYWINDOW_PEER_PORT", "8001")  # link to the simulator (scripts/sim.py)
 
 if sys.platform == "win32" and "REQUESTS_CA_BUNDLE" not in os.environ:
     pem = ROOT / ".venv" / "winroots.pem"

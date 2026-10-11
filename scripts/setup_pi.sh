@@ -34,13 +34,34 @@ Wants=network-online.target
 [Service]
 User=$USER
 WorkingDirectory=$PWD
+Environment=SKYWINDOW_PEER_PORT=8001
 ExecStart=$PWD/.venv/bin/uvicorn server.app:app --host 0.0.0.0 --port 8000
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
+echo "== simulator service (same real sky, simulated sensors, own database; never touches hardware) =="
+sudo tee /etc/systemd/system/skywindow-sim.service >/dev/null <<EOF
+[Unit]
+Description=SkyWindow simulator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER
+WorkingDirectory=$PWD
+Environment=SKYWINDOW_SIM=1
+Environment=SKYWINDOW_PEER_PORT=8000
+ExecStart=$PWD/.venv/bin/uvicorn server.app:app --host 0.0.0.0 --port 8001
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now skywindow
+sudo systemctl enable --now skywindow skywindow-sim
+IP=$(hostname -I | awk '{print $1}')
 echo
-echo "Done. Dashboard: http://$(hostname -I | awk '{print $1}'):8000   logs: journalctl -u skywindow -f"
+echo "Done. Live device: http://$IP:8000   Simulator: http://$IP:8001"
+echo "Logs: journalctl -u skywindow -f   /   journalctl -u skywindow-sim -f"
