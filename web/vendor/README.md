@@ -29,7 +29,12 @@ Story assets in `web/assets/`:
 | `textures/earth/milkyway_glow.jpg` | NASA/Goddard SVS Deep Star Maps 2020 (4K EXR, blurred to the Milky Way glow) | NASA SVS, credited |
 | `data/stars.json` | HYG star database v4.1, stars to magnitude 6.6 | CC BY-SA 4.0 (astronexus.com) |
 | `models/room/*.glb`, `textures/room/*`, `hdri/school_hall_1k.hdr` | Poly Haven (polyhaven.com), meshopt + WebP with glTF-Transform | CC0 |
+| `audio/music/*.m4a` | Scott Buckley: “Penumbra”, “Cirrus”, “Hymn to the Dawn” (scottbuckley.com.au), trimmed to loopable acts | CC BY 4.0, credited on the page |
+| `audio/beds/chorus.m4a` | NASA/University of Iowa, EMFISIS “Chorus Plasma Waves” | NASA, credited |
+| `audio/beds/*`, `audio/sfx/*` | Freesound field recordings and foley, one file per recording; full list in `audio/CREDITS.md` | CC0 |
 
-`scripts/fetch_story_assets.sh` downloads and converts all of the above (cached in `.cache/story-assets/`).
+`scripts/fetch_story_assets.sh` downloads and converts all of the above except the sound (cached in `.cache/story-assets/`).
+`scripts/fetch_audio.py` downloads and builds the sound from `scripts/audio_manifest.json` (cached in `.cache/audio/`),
+and writes `audio/cues.json` and `audio/CREDITS.md`. Audition everything at `sound-lab.html` (not linked).
 
 To update a library, download the new version into this folder and change nothing else (the HTML points here).

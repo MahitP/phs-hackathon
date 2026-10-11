@@ -10,13 +10,8 @@ import { createSashWindow } from "../models/sash.js";
 import { createKit, createClassroom } from "../models/classroom.js";
 import { createDevice } from "../models/device.js";
 import { band, range, clamp, lerp, easeInOut, smooth, sunVector, glowTexture } from "../util.js";
+import { LCD } from "../../shell/copy.js";
 
-const LCD = {
-  open: ["OPEN THE WINDOW", "Sky is cleaner", [0, 200, 60]],
-  either: ["EITHER WAY", "In ~ out", [230, 170, 0]],
-  shut: ["KEEP IT SHUT", "Sky is hazy", [230, 0, 0]],
-  ventilate: ["VENTILATE NOW!", "Indoor spike", [150, 0, 220]],
-};
 // skies for each verdict scene: [turbidity, rayleigh, mie, smoke 0..1, sun elevation, sun azimuth, raise]
 const SKY = {
   intro: [2.6, 2.2, 0.005, 0, 30, 228, null],
@@ -151,13 +146,17 @@ export function createRoom({ renderer, tier, manager }) {
   }
 
   const sunV = new THREE.Vector3(), sunColor = new THREE.Color(), fogClean = new THREE.Color(0xbac8d8), fogSmoke = new THREE.Color(0xb7835a);
-  const cur = { t: 2.5, r: 1.2, m: 0.004, smoke: 0, el: 35, az: 200 };
+  const cur = { t: 2.5, r: 1.2, m: 0.004, smoke: 0, el: 35, az: 200, cloud: 0 };
   let live = null, lastBeat = null;
 
-  function liveSky() {
-    const aod = live?.aod ?? 0.15, el = live?.sunElevation ?? 35, az = live?.sunAzimuth ?? 200; // the real sky over PHS now
-    return [2 + aod * 12, clamp(1.5 - aod * 1.2, 0.3, 1.5), 0.003 + aod * 0.03, clamp((aod - 0.7) / 0.8), Math.max(el, -6), az, null];
+  /** A sky from measurements: aerosol optical depth, sun elevation/azimuth (degrees), cloud cover 0..1.
+   *  Cloud thickens the haze a little and takes most of the direct sun away. */
+  function skyFrom({ aod = 0.15, el = 35, az = 200, cloud = 0 } = {}) {
+    const c = clamp(cloud ?? 0);
+    return [2 + aod * 12 + c * 4, clamp(1.5 - aod * 1.2 - c * 0.4, 0.3, 1.5), 0.003 + aod * 0.03 + c * 0.006, clamp((aod - 0.7) / 0.8), Math.max(el, -6), az, null, c];
   }
+  // the real sky over PHS now
+  const liveSky = () => skyFrom({ aod: live?.aod ?? 0.15, el: live?.sunElevation ?? 35, az: live?.sunAzimuth ?? 200, cloud: live?.cloud != null ? live.cloud / 100 : 0 });
   function liveKey() { return live?.verdict && LCD[live.verdict] ? live.verdict : "either"; }
 
   let skyEnvWait = 0;
@@ -172,11 +171,19 @@ export function createRoom({ renderer, tier, manager }) {
     if (prev) prev.dispose();
   }
 
-  function update(T, dt, time, hud, liveNow, sound) {
+  /** Put the camera at a pose {p, t, fov} (the live window drives the camera this way instead of story time). */
+  function applyPose(pose) {
+    camera.position.fromArray(pose.p); rig.target.fromArray(pose.t); camera.lookAt(rig.target);
+    if (Math.abs(camera.fov - pose.fov) > 1e-3) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
+  }
+
+  // `drive` (live window): any field that is set replaces what story time would do
+  //   { camera: {p, t, fov}, sky: {aod, el, az, cloud}, raise, explode, lcd: [l1, l2, rgb], near }
+  function update(T, dt, time, hud, liveNow, sound, drive = null) {
     live = liveNow || live;
-    rig.apply(T, dt);
+    if (drive?.camera) applyPose(drive.camera); else rig.apply(T, dt);
     // the device chapter: blend from the rig into the orbit framing and back out
-    const dw = smooth(band(T, 5.97, 6.06, 6.92, 7.03));
+    const dw = drive?.camera ? 0 : smooth(band(T, 5.97, 6.06, 6.92, 7.03));
     if (dw > 0.001) {
       const fov = deviceCamera(T);
       camera.position.lerp(devPos, dw); _c.copy(rig.target).lerp(devTgt, dw); camera.lookAt(_c);
@@ -185,19 +192,20 @@ export function createRoom({ renderer, tier, manager }) {
     } else room.focus.set(0.1, win.sillTop + 0.03, -0.3);
     const dbg = window.__room;
     if (dbg && dbg.cam) { camera.position.fromArray(dbg.cam[0]); camera.lookAt(...dbg.cam[1]); if (dbg.cam[2]) { camera.fov = dbg.cam[2]; camera.updateProjectionMatrix(); } }
-    const near = T > 5.9 && T < 7.06 ? 0.004 : 0.03;
+    const near = drive?.near ?? (T > 5.9 && T < 7.06 ? 0.004 : 0.03);
     if (camera.near !== near) { camera.near = near; camera.updateProjectionMatrix(); }
 
     // which sky? live sky everywhere except the verdict chapter, which steps through four days
     const l7 = T - 7;
-    let target = T >= 8 ? liveSky() : SKY.intro, beat = null; // a fixed afternoon until the last chapter, which is live
-    if (T >= 7 && T < 8) {
+    let target = drive?.sky ? skyFrom(drive.sky) : T >= 8 ? liveSky() : SKY.intro, beat = null; // a fixed afternoon until the last chapter, which is live
+    if (!drive?.sky && T >= 7 && T < 8) {
       for (const [k, a, b] of VERDICT_BEATS) if (l7 >= a - 0.02 && l7 < b + 0.02) beat = k;
       if (beat) target = SKY[beat];
     }
-    const k = 1 - Math.exp(-dt * 3.2);
+    const k = drive?.snap ? 1 : 1 - Math.exp(-dt * 3.2); // snap: arriving under a cloud, no visible drift
     cur.t = lerp(cur.t, target[0], k); cur.r = lerp(cur.r, target[1], k); cur.m = lerp(cur.m, target[2], k);
     cur.smoke = lerp(cur.smoke, target[3], k); cur.el = lerp(cur.el, target[4], k); cur.az = lerp(cur.az, target[5], k);
+    cur.cloud = lerp(cur.cloud, target[7] ?? 0, k);
     su.turbidity.value = cur.t; su.rayleigh.value = cur.r; su.mieCoefficient.value = cur.m;
     sunVector(cur.el, cur.az, sunV);
     su.sunPosition.value.copy(sunV);
@@ -205,7 +213,7 @@ export function createRoom({ renderer, tier, manager }) {
     updateSkyEnv(dt);
     const day = smooth(range(cur.el, -4, 8));
     sunColor.setRGB(1, lerp(0.95, 0.6, cur.smoke) * lerp(0.82, 1, smooth(range(cur.el, 4, 30))), lerp(0.88, 0.38, cur.smoke) * lerp(0.62, 1, smooth(range(cur.el, 4, 30))));
-    const sunIntensity = (0.3 + 4.6 * day) * (1 - cur.smoke * 0.55);
+    const sunIntensity = (0.3 + 4.6 * day) * (1 - cur.smoke * 0.55) * (1 - cur.cloud * 0.65);
     scene.fog.color.copy(fogClean).lerp(fogSmoke, cur.smoke).multiplyScalar(0.25 + 0.75 * day);
     scene.fog.near = lerp(35, 9, cur.smoke); scene.fog.far = lerp(950, 190, cur.smoke) * lerp(1, 0.55, clamp((cur.t - 2.5) / 10));
     scene.environmentIntensity = 0.12 + 0.24 * day;
@@ -221,7 +229,8 @@ export function createRoom({ renderer, tier, manager }) {
 
     // sash
     let raise = 0;
-    if (T < 5.3) raise = 0;
+    if (drive?.raise != null) raise = drive.raise;
+    else if (T < 5.3) raise = 0;
     else if (T < 5.6) raise = 0.62 * easeInOut(range(T, 5.3, 5.55));
     else if (T < 6) raise = 0.62 * (1 - easeInOut(range(T, 5.88, 5.99)));
     else if (T < 7) raise = 0;
@@ -230,14 +239,15 @@ export function createRoom({ renderer, tier, manager }) {
     win.setRaise(raise);
 
     // exploded view (chapter 6)
-    const e = easeInOut(range(T, 5.98, 6.12)) * (1 - easeInOut(range(T, 6.94, 7.04)));
+    const e = drive?.explode ?? easeInOut(range(T, 5.98, 6.12)) * (1 - easeInOut(range(T, 6.94, 7.04)));
     device.setExplode(e);
     if (device.tick) device.tick(time);
     const show = (name, a, b) => (labels[name].element.style.opacity = band(T, a, a + 0.04, b - 0.04, b));
     show("air", 6.2, 6.42); show("light", 6.4, 6.62); show("pi", 6.6, 6.8); show("lcd", 6.8, 6.98); show("speaker", 6.8, 6.98);
 
     // LCD content
-    if (beat) device.setLCD(...LCD[beat]);
+    if (drive?.lcd) device.setLCD(...drive.lcd);
+    else if (beat) device.setLCD(...LCD[beat]);
     else {
       const key = liveKey(), [l1, l2a, rgb] = LCD[key];
       const aqi = live?.aqi != null ? String(Math.round(live.aqi)) : "?", st = live?.stale != null ? String(Math.round(live.stale)) : "?";
@@ -289,8 +299,14 @@ export function createRoom({ renderer, tier, manager }) {
   // compile anything that arrived late so the first look inside doesn't stutter
   function upgrade() { if (renderer.compileAsync) renderer.compileAsync(scene, camera).catch(() => {}); }
 
+  /** where the camera is right now, as a pose (so a hand-off can start exactly here) */
+  function pose() {
+    return { p: camera.position.toArray(), t: rig.target.toArray(), fov: camera.fov };
+  }
+
   return {
     scene, camera, update, upgrade, godrays: room.godrays, dof: room.dof,
+    rig, win, device, kit, pose, skyFrom, labels, room,
     ao: tier === "low" ? null : { radius: 0.32, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 16 },
     exposure: 0.62, bloom: [0.2, 0.45, 0.92],
   };

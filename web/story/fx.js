@@ -155,15 +155,25 @@ export function createPost(renderer, tier, scene, camera) {
   curtain.enabled = false;
 
   const _v = new THREE.Vector3();
-  let current = null;
+  let current = null, aoScale = 1, cssW = size.x, cssH = size.y;
+  // ambient occlusion resolution: mid always renders it at half CSS size; high at full device size unless
+  // the render governor halves it (aoScale) to keep a heavy scene at 60 fps
+  const sizeAO = () => {
+    if (!gtao) return;
+    if (tier === "mid") gtao.setSize(cssW / 2, cssH / 2);
+    else if (aoScale !== 1) gtao.setSize(cssW * renderer.getPixelRatio() * aoScale, cssH * renderer.getPixelRatio() * aoScale);
+  };
 
   return {
     composer, renderPass, bloom, curtain, grain, gtao, bokeh, godrays,
     setSize(w, h) {
+      cssW = w; cssH = h;
       composer.setSize(w, h); bloom.resolution.set(w, h); curtain.uniforms.uAspect.value = w / h;
       if (godrays) godrays.uniforms.uAspect.value = w / h;
-      if (gtao && tier === "mid") gtao.setSize(w / 2, h / 2);
+      sizeAO();
     },
+    /** 1 = full resolution, 0.5 = half (high tier only; the governor's first step) */
+    setAOScale(k) { aoScale = k; if (tier === "high" && gtao) { if (k === 1) gtao.setSize(cssW * renderer.getPixelRatio(), cssH * renderer.getPixelRatio()); else sizeAO(); } },
     /** point every scene-aware pass at the active world */
     setWorld(w) {
       current = w;

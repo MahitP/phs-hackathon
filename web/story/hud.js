@@ -2,11 +2,7 @@
 // readable without WebGL; here it is faded and nudged in step with story time, and headlines fade in
 // word by word (opacity, a short rise and a blur that clears) when their block comes into view.
 import { band, clamp } from "./util.js";
-
-const STRETCH = { open: 125, either: 94, shut: 62, ventilate: 112 };
-const LABEL = { open: "Open the window.", either: "Either way.", shut: "Keep it shut.", ventilate: "Ventilate now." };
-const COLOR = { open: "#0B7643", either: "#825B0C", shut: "#AC3227", ventilate: "#7D45A2" };
-const COLOR_ON_DARK = { open: "#4AC27F", either: "#E5B54A", shut: "#F0675A", ventilate: "#B78AE0" };
+import { STRETCH, LABEL, COLOR, COLOR_ON_DARK } from "../shell/copy.js";
 
 /** Wrap each word of a heading in spans so the words can fade in one after another. */
 function splitWords(el) {

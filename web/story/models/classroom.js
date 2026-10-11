@@ -1421,7 +1421,7 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
     fragmentShader: /* glsl */ `
       #include <packing>
       ${APERTURE_GLSL}
-      uniform vec3 uColor; uniform float uDensity, uTime; uniform sampler2D uShadow; uniform mat4 uShadowM, uInv;
+      uniform vec3 uColor; uniform float uDensity, uTime, uInside; uniform sampler2D uShadow; uniform mat4 uShadowM, uInv;
       varying vec3 vW;
       float h1(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
       float n3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -1435,16 +1435,21 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
         vec2 tr = slab(ro, rd, vec3(${R.x0.toFixed(2)}, ${FL.toFixed(2)}, ${R.z0.toFixed(2)}), vec3(${R.x1.toFixed(2)}, ${CEIL.toFixed(2)}, -0.15));
         float t0 = max(max(tb.x, tr.x), 0.0), t1 = min(tb.y, tr.y);
         if (t1 <= t0) discard;
-        float dt = (t1 - t0) / float(STEPS), j = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uTime * 7.0) * 43758.5453);
+        // standing inside the beam (the device close-up by the window) every pixel marches it: a third of the
+        // steps and one noise octave there; the haze reads the same, at a fraction of the cost
+        int steps = uInside > 0.5 ? STEPS / 3 : STEPS;
+        float dt = (t1 - t0) / float(steps), j = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uTime * 7.0) * 43758.5453);
         float acc = 0.0;
         for (int i = 0; i < STEPS; i++) {
+          if (i >= steps) break;
           vec3 p = ro + rd * (t0 + (float(i) + j) * dt);
           float m = roomAperture(p, 0.15) * roomAperture(p, -0.15);
           #ifdef USE_SHADOW
           vec4 sc = uShadowM * vec4(p, 1.0);
           if (sc.x > 0.0 && sc.x < 1.0 && sc.y > 0.0 && sc.y < 1.0 && sc.z < 1.0) m *= step(sc.z - 0.0015, unpackRGBAToDepth(texture2D(uShadow, sc.xy)));
           #endif
-          float n = n3(p * vec3(2.1, 1.4, 2.1) + vec3(uTime * 0.05, uTime * 0.03, -uTime * 0.04)) * 0.7 + n3(p * 6.3 - vec3(0.0, uTime * 0.07, 0.0)) * 0.3;
+          float n = n3(p * vec3(2.1, 1.4, 2.1) + vec3(uTime * 0.05, uTime * 0.03, -uTime * 0.04)) * 0.7;
+          n += uInside > 0.5 ? 0.15 : n3(p * 6.3 - vec3(0.0, uTime * 0.07, 0.0)) * 0.3; // the fine octave's mean, inside
           float tt = t0 + (float(i) + j) * dt;
           acc += m * (0.12 + 1.8 * n * n) * smoothstep(0.25, 1.3, tt) * exp(min(p.z, 0.0) * 0.14);
         }
@@ -1454,7 +1459,7 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
   });
   const beams = WINDOWS.filter((w) => w.main).map((w) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5), beamMat.clone());
-    m.material.uniforms = { ...beamU, uInv: { value: new THREE.Matrix4() } };
+    m.material.uniforms = { ...beamU, uInv: { value: new THREE.Matrix4() }, uInside: { value: 0 } };
     m.matrixAutoUpdate = false; m.frustumCulled = false; m.renderOrder = 5; excludeFromOverride(m); scene.add(m);
     return { m, w };
   });
@@ -1517,6 +1522,7 @@ export function createClassroom({ scene, renderer, tier, kit, win, camera }) {
       const c = tmpV.copy(camera.position).applyMatrix4(m.material.uniforms.uInv.value);
       const inside = c.x > -0.02 && c.x < 1.02 && c.y > -0.02 && c.y < 1.02 && c.z > -0.02 && c.z < 1.02;
       m.material.side = inside ? THREE.BackSide : THREE.FrontSide; m.material.depthTest = !inside;
+      m.material.uniforms.uInside.value = inside ? 1 : 0;
     }
     beamU.uTime.value = time; dustU.uTime.value = time;
     beamU.uColor.value.copy(sunColor);

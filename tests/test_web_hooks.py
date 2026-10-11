@@ -1,16 +1,16 @@
-"""Every DOM hook the dashboard scripts rely on must exist in web/app.html.
+"""Every DOM hook the classic dashboard scripts rely on must exist in web/classic.html.
 
 The scripts find elements by id ($("x"), getElementById, querySelector("#x")) and by data-attribute,
 role and class selectors. If a markup change drops one of them, nothing fails until someone clicks
-the right button, so this test checks the markup statically. Only web/app.html and web/*.js are
-checked (web/index.html, web/story/ and web/vendor/ belong to other pages or libraries).
+the right button, so this test checks the markup statically. Only web/classic.html and web/*.js are
+checked (the shell pages, web/story/, web/shell/, web/live/ and web/vendor/ are covered elsewhere).
 """
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parents[1] / "web"
-APP = WEB / "app.html"
+APP = WEB / "classic.html"
 
 # A string literal that is the whole first argument: "x" followed by ")" or ",", never by "+".
 _LIT = r"""\(\s*(["'])([^"'`]+)\1\s*[,)]"""
@@ -58,7 +58,7 @@ def _page():
 def _scripts(page):
     files = {p.name: p.read_text(encoding="utf-8") for p in sorted(WEB.glob("*.js"))}
     for i, js in enumerate(page.inline_js):
-        files[f"app.html <script> #{i + 1}"] = js
+        files[f"classic.html <script> #{i + 1}"] = js
     return files
 
 
@@ -98,7 +98,7 @@ def test_scripts_use_literal_ids_only():
     assert not bad, "dynamic element ids found (write them out literally):\n" + "\n".join(bad)
 
 
-def test_every_script_hook_exists_in_app_html():
+def test_every_script_hook_exists_in_classic_html():
     page = _page()
     ids = {a["id"] for _, a in page.elements if "id" in a}
     classes = {c for _, a in page.elements for c in a.get("class", "").split()}
@@ -111,7 +111,7 @@ def test_every_script_hook_exists_in_app_html():
         ok = any(attr in a and (val is None or a[attr] == val) for _, a in page.elements)
         if not ok:
             missing.append(f"[{attr}{'=' + val if val is not None else ''}] (used in {', '.join(sorted(where))})")
-    assert not missing, "web/app.html is missing elements the scripts use:\n" + "\n".join(missing)
+    assert not missing, "web/classic.html is missing elements the scripts use:\n" + "\n".join(missing)
 
 
 def test_known_hooks_are_still_queried():
@@ -133,7 +133,7 @@ def test_ids_are_unique():
     for _, a in _page().elements:
         if "id" in a:
             (dupes if a["id"] in seen else seen).add(a["id"])
-    assert not dupes, f"duplicate ids in app.html: {sorted(dupes)}"
+    assert not dupes, f"duplicate ids in classic.html: {sorted(dupes)}"
 
 
 def test_every_tab_has_a_panel():

@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SkyWindow</title>
+  <!-- index.html and app.html are the same document (tests/test_web_hooks.py checks): the story and the
+       live window share one renderer, so the camera can fly from one into the other. app.html opens live. -->
   <meta name="description" content="SkyWindow sits on a windowsill at Princeton High School. It reads the sky outside and the air in the room, then tells every classroom whether to open the windows. hackPHS 2026.">
   <meta name="theme-color" content="#0b0d10">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 20 20%22%3E%3Crect width=%2220%22 height=%2220%22 fill=%22%231C2024%22/%3E%3Cpath d=%22M5 4h10v12H5zM5 10h10M10 4v12%22 fill=%22none%22 stroke=%22%23F2F3F0%22 stroke-width=%221.6%22/%3E%3C/svg%3E">
@@ -11,14 +13,15 @@
   <link rel="stylesheet" href="vendor/fonts/archivo.css">
   <link rel="stylesheet" href="vendor/lenis.css">
   <link rel="stylesheet" href="story/story.css">
+  <link rel="stylesheet" href="live/live.css">
   <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
   <script src="vendor/gsap.min.js"></script>
   <script src="vendor/lenis.min.js"></script>
   <script src="sky-local.js"></script>
-  <script type="module" src="story/main.js"></script>
+  <script type="module" src="shell/boot.js"></script>
 </head>
 <body>
-  <a class="skip" href="app.html">Skip to the live dashboard</a>
+  <a class="skip" href="app.html" data-to-live>Skip to the live window</a>
   <canvas id="stage" aria-hidden="true"></canvas>
   <div class="scrim" aria-hidden="true"></div>
   <div id="labels" aria-hidden="true"></div>
@@ -37,9 +40,9 @@
       <p class="load-pct"><span id="load-pct">0%</span><span class="load-what">Loading the Earth, the satellite and Princeton</span></p>
       <div class="load-actions">
         <button id="enter" class="btn btn-light" type="button" disabled>Look outside</button>
-        <button id="sound-pref" class="btn btn-outline-light" type="button" aria-pressed="false">
+        <button id="sound-pref" class="btn btn-outline-light" type="button" aria-pressed="true">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"></path><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"></path></svg>
-          <span data-sound-label>Sound off</span>
+          <span data-sound-label>Sound on, best with headphones</span>
         </button>
       </div>
       <p class="load-hint">Scroll to move through the story. Sound follows the real wind over PHS; headphones help.</p>
@@ -70,7 +73,10 @@
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"></path><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"></path></svg>
       <span data-sound-label>Sound off</span>
     </button>
-    <a class="btn btn-solid small" href="app.html"><span class="hide-sm">Live dashboard</span><span class="show-sm">Dashboard</span></a>
+    <button class="btn btn-ghost small sound-mix" type="button" data-sound-mix aria-controls="sound-pop" aria-expanded="false" aria-label="Sound mix">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 6h14M3 14h14"></path><circle cx="7" cy="6" r="1.9" fill="var(--bg-fill, #fff)"></circle><circle cx="13" cy="14" r="1.9" fill="var(--bg-fill, #fff)"></circle></svg>
+    </button>
+    <a class="btn btn-solid small" href="app.html" data-to-live><span class="hide-sm">Live window</span><span class="show-sm">Live</span></a>
   </header>
 
   <main id="story" tabindex="-1">
@@ -185,15 +191,116 @@
         <p class="why" data-bind="now-why">Checking the sky over PHS.</p>
         <p class="note" data-bind="now-note"></p>
         <div class="actions">
-          <a class="btn btn-solid" href="app.html">Open the live window</a>
+          <a class="btn btn-solid" href="app.html" id="btn-open-live" data-to-live>Open the live window</a>
           <button class="btn btn-outline" type="button" data-restart>Watch again</button>
         </div>
         <div class="credits">
           <p>Built at hackPHS 2026 by [Team names].</p>
           <p>Data: Open-Meteo and the CAMS atmosphere model (CC BY 4.0). Fire detections: NASA FIRMS. Satellite model: NASA 3D Resources. Map: OpenStreetMap contributors (ODbL).</p>
+          <p>Music: “Penumbra”, “Cirrus” and “Hymn to the Dawn” by Scott Buckley (CC BY 4.0). Radiation-belt chorus: NASA/University of Iowa. Field recordings: Freesound contributors (CC0). <a href="assets/audio/CREDITS.md">Sound credits</a></p>
         </div>
       </div>
     </section>
   </main>
+
+  <!-- the live window: the classroom from the story, showing the real sky over PHS right now -->
+  <div id="live" inert>
+    <div class="lv-wash" id="lv-wash" aria-hidden="true"></div>
+    <header class="lv-head">
+      <a class="lv-brand" href="./" data-to-story>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3.5" y="2.5" width="13" height="15"></rect><path d="M3.5 10.5h13M10 2.5v15"></path></svg>
+        SkyWindow
+      </a>
+      <p class="lv-place">Princeton High School <span class="lv-coord">40.359° N, 74.656° W</span></p>
+      <p class="lv-status" id="lv-status" data-status="boot" role="status"><span class="lv-led" aria-hidden="true"></span><span class="lv-sm-hide" id="lv-status-text">Checking the air at PHS</span></p>
+      <nav class="lv-nav" aria-label="Live window">
+        <button class="lv-link" type="button" data-sound aria-pressed="false">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"></path><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"></path></svg>
+          <span class="lv-sm-hide" data-sound-label>Sound off</span>
+        </button>
+        <button class="lv-link sound-mix" type="button" data-sound-mix aria-controls="sound-pop" aria-expanded="false" aria-label="Sound mix">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 6h14M3 14h14"></path><circle cx="7" cy="6" r="1.9" fill="var(--bg-fill, #fff)"></circle><circle cx="13" cy="14" r="1.9" fill="var(--bg-fill, #fff)"></circle></svg>
+        </button>
+        <a class="lv-link" href="./" data-to-story><span class="hide-sm">Replay the story</span><span class="show-sm">Replay</span></a>
+      </nav>
+    </header>
+
+    <section class="lv-col" id="lv-col" aria-labelledby="live-verdict">
+      <div class="lv-a">
+        <p class="lv-when" id="lv-when">Right now at PHS</p>
+        <h1 class="lv-verdict" id="live-verdict" tabindex="-1">Checking the air.</h1>
+        <p class="lv-reason" id="lv-reason">Reading the sky over Princeton High School.</p>
+      </div>
+      <div class="lv-b">
+        <figure class="lv-chart" id="lv-chart">
+          <svg id="lv-chart-svg" role="img" aria-labelledby="lv-chart-cap"></svg>
+          <figcaption id="lv-chart-cap">Outside air and the room, past and next hours.</figcaption>
+        </figure>
+        <p class="lv-whatif" id="lv-whatif" aria-live="polite"></p>
+        <div class="lv-actions">
+          <button class="btn btn-solid" id="lv-read" type="button"><span class="btn-text">Read it aloud</span></button>
+          <button class="btn btn-outline" id="lv-why" type="button" aria-expanded="false" aria-controls="lv-sheet">Why?</button>
+          <button class="btn btn-outline" id="lv-reset" type="button" hidden>Back to recommended</button>
+        </div>
+        <p class="lv-said" id="lv-said" hidden></p>
+        <audio id="lv-audio" preload="none"></audio>
+      </div>
+    </section>
+    <span class="lv-rule" data-rule="head" aria-hidden="true"></span>
+    <span class="lv-rule" data-rule="meet" aria-hidden="true"></span>
+    <span class="lv-rule" data-rule="sill" aria-hidden="true"></span>
+    <svg class="lv-loading" id="lv-loading" viewBox="0 0 120 180" aria-hidden="true"><rect x="4" y="4" width="112" height="172"></rect><path d="M4 90h112M60 4v172M4 166h112"></path></svg>
+
+    <div class="lv-sill" id="lv-sill">
+      <div class="lv-inst" data-inst="aqi">
+        <p class="lv-inst-k">Outside air</p>
+        <p class="lv-inst-v"><span class="lv-num" id="lv-aqi">–</span><span class="lv-unit">AQI</span><svg class="lv-spark" id="lv-aqi-spark" aria-hidden="true"></svg></p>
+        <p class="lv-inst-s" id="lv-aqi-cat">&nbsp;</p>
+      </div>
+      <div class="lv-inst" data-inst="room">
+        <p class="lv-inst-k" id="lv-room-k">Room</p>
+        <p class="lv-inst-v"><span class="lv-num" id="lv-room">–</span><span class="lv-unit">/100</span><svg class="lv-spark" id="lv-room-spark" aria-hidden="true"></svg></p>
+        <p class="lv-inst-s" id="lv-room-s">&nbsp;</p>
+      </div>
+      <div class="lv-inst" data-inst="sun">
+        <p class="lv-inst-k">Sunlight getting through</p>
+        <p class="lv-inst-v"><span class="lv-num" id="lv-sun">–</span><span class="lv-unit" id="lv-sun-unit">%</span></p>
+        <p class="lv-inst-s" id="lv-sun-s">&nbsp;</p>
+      </div>
+      <div class="lv-inst" data-inst="wx">
+        <p class="lv-inst-k">Weather</p>
+        <p class="lv-inst-v"><span class="lv-num" id="lv-temp">–</span><span class="lv-unit" id="lv-temp-unit">°F</span></p>
+        <p class="lv-inst-s"><svg class="lv-arrow" id="lv-wind-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M8 2l-4 4M8 2l4 4"></path></svg><span id="lv-wind">&nbsp;</span></p>
+      </div>
+    </div>
+
+    <div class="lv-ruler" id="lv-ruler">
+      <svg id="lv-ruler-svg" role="img" aria-labelledby="lv-ruler-cap"></svg>
+      <p class="sr-only" id="lv-ruler-cap"></p>
+    </div>
+
+    <div class="lv-sheet" id="lv-sheet" role="region" aria-labelledby="lv-sheet-title" hidden>
+      <div class="lv-sheet-in">
+        <h2 id="lv-sheet-title">Why this verdict</h2>
+        <ol class="lv-path" id="lv-path"></ol>
+        <p class="lv-sheet-note" id="lv-sheet-note"></p>
+        <button class="btn btn-outline" id="lv-sheet-close" type="button">Close</button>
+      </div>
+    </div>
+
+    <label class="sr-only" for="sash-input">Lift the sash to see what opening the window would do</label>
+    <input class="lv-sash-input" id="sash-input" type="range" min="0" max="78" step="1" value="0">
+    <svg class="lv-leaders" id="lv-leaders" aria-hidden="true"></svg>
+  </div>
+  <div class="sound-pop" id="sound-pop" role="dialog" aria-label="Sound mix" hidden>
+    <p class="sound-pop-title">Sound</p>
+    <label class="sound-row"><span>Music</span><input type="range" min="0" max="100" step="1" data-level="music"></label>
+    <label class="sound-row"><span>Ambience</span><input type="range" min="0" max="100" step="1" data-level="ambience"></label>
+    <label class="sound-row"><span>Effects</span><input type="range" min="0" max="100" step="1" data-level="effects"></label>
+    <label class="sound-check"><input type="checkbox" data-level="liveMusic"> Keep the music in the live window</label>
+    <p class="sound-note">M turns sound on and off. Best with headphones.</p>
+  </div>
+  <div id="lv-veil" aria-hidden="true"></div>
+  <p class="sr-only" id="sr-announce" aria-live="polite"></p>
 </body>
 </html>

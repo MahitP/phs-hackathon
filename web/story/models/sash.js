@@ -269,7 +269,7 @@ export function createSashWindow({ tier, kit }) {
   function setRaise(r) { raise = Math.max(0, Math.min(0.78, r)); lowerSash.position.y = Y0 + raise; }
 
   return {
-    root, setRaise, get raise() { return raise; },
+    root, setRaise, get raise() { return raise; }, get lowerSash() { return lowerSash; }, maxRaise: 0.78,
     sillTop: SILL, center: new THREE.Vector3(0, (SILL + HEAD) / 2, 0),
     windows: WINDOWS, high,
   };

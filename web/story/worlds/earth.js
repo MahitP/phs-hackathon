@@ -429,5 +429,5 @@ export function createEarth({ manager, tier, smoke, renderer }) {
     return { pos: _c.copy(sunSprite.position), strength: 0.9, threshold: 1.6, flare: vis * 0.9, tint: 0xffeedd };
   }
 
-  return { scene, camera, update, upgrade, dof, godrays, exposure: 1.0, bloom: [0.45, 0.5, 0.88] };
+  return { scene, camera, update, upgrade, dof, godrays, satellite: sat, exposure: 1.0, bloom: [0.45, 0.5, 0.88] };
 }

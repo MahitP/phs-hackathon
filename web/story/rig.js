@@ -3,6 +3,7 @@
 // repeats its neighbour becomes a hold. Same idea as edolus's CameraController, in three.js.
 import * as THREE from "three";
 import { damp } from "./util.js";
+import { viewport } from "../shell/viewport.js";
 
 export class Rig {
   /** keys: [{ T, p: [x,y,z], t: [x,y,z], fov }] sorted by T */
@@ -20,7 +21,7 @@ export class Rig {
       return k.v.map((_, j) => (b.v[j] - a.v[j]) / (b.T - a.T));
     });
     this._out = new Array(7).fill(0);
-    window.addEventListener("pointermove", (e) => this.mouse.set(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1));
+    window.addEventListener("pointermove", (e) => this.mouse.set(e.clientX / viewport.w * 2 - 1, e.clientY / viewport.h * 2 - 1));
   }
 
   sample(T) {
