@@ -185,3 +185,30 @@
 #app .regions { left: 16px; right: 16px; max-width: none; justify-content: flex-start; bottom: auto; top: 96px; }
 #app .regions .label { display: none; }
 }
+
+/* the one map control (NOW and PHS CAMPUS): recenter, satellite/map, fires */
+#app .map-ctl { display: flex; flex-direction: column; gap: 4px; }
+#app .map-ctl button { background: rgba(6,10,18,.85); color: var(--muted); border: 1px solid var(--line); font: inherit; font-size: 10px;
+  letter-spacing: .1em; padding: 7px 10px; cursor: pointer; text-align: left; }
+#app .map-ctl button:hover, #app .map-ctl button.on { color: var(--ink); border-color: var(--ink); }
+#app .map-ctl button:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* FORECAST: when can PHS open its windows? hour by hour */
+#app .scope.sky { color: #c4b5fd; border: 1px solid rgba(167,139,250,.5); background: rgba(167,139,250,.08); }
+#app .best { font-size: 1.05rem; line-height: 1.5; margin: 6px 0 12px; }
+#app .best b { color: var(--best, var(--ink)); }
+#app .fc-strip { display: flex; gap: 2px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; scrollbar-width: thin; }
+#app .fc-hour { flex: 0 0 52px; background: rgba(0,0,0,.5); border: 1px solid var(--line); text-align: center; padding: 6px 2px 0; font-size: 0.62rem; }
+#app .fc-hour.now { border-color: var(--ink); }
+#app .fc-hour .t { color: var(--muted); }
+#app .fc-hour .i { font-size: 1.15rem; margin: 3px 0; font-family: var(--sans); }
+#app .fc-hour .a { font-weight: 600; }
+#app .fc-hour .r { color: #93c5fd; font-size: 0.56rem; margin: 2px 0 4px; }
+#app .fc-hour .v { height: 6px; margin: 0 -2px; }
+
+/* EARTH: city names + AQI that follow the globe's dots */
+#app #city-labels { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+#app #city-labels[hidden] { display: none; }
+#app .city-label { position: absolute; left: 0; top: 0; font-size: 10px; letter-spacing: .06em; color: #e2e8f0;
+  text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
+#app .city-label b { font-weight: 600; }

@@ -18,7 +18,7 @@ export function normalize(s, mode, at = Date.now()) {
   const dir = compass(sky.wind_dir);
   const sun = sunAngles(PHS.lat, PHS.lon, new Date(at));
   return {
-    mode, mock: !!s.mock, at,
+    mode, mock: !!s.mock, feed: s.feed || null, offline: !!ind.offline, at,
     aqi: sky.us_aqi, pm25: sky.pm2_5, aod: sky.aod, wind: sky.wind_speed, windDir: sky.wind_dir,
     windFrom: dir ? COMPASS_WORDS[dir] : null, temp: sky.temperature, cloud: sky.cloud_cover,
     precip: sky.precipitation, weatherCode: sky.weather_code, humidity: sky.humidity,
@@ -52,7 +52,8 @@ export function createStore({
       if (r.status === 503) return { warming: true };
       if (!r.ok) return null;
       const s = await r.json();
-      return s && s.sky ? { state: s } : null;
+      // a Pi with no sky data yet (just booted, Open-Meteo down) is still the Pi: its verdict and room are real
+      return s && s.verdict ? { state: s } : null;
     } catch { return null; } finally { clearTimeout(t); }
   }
 

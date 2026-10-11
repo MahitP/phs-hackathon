@@ -2,8 +2,8 @@
 
 ## Before judging
 - [ ] Device powered **at least 2 min** before judges arrive (air sensor heater warm-up)
-- [ ] Clean-air baseline set: hold near an open window or door → Setup → *Set clean-air baseline*
-- [ ] Light sensor calibrated while it faces daylight → Setup → *Calibrate light sensor to sky*
+- [ ] Clean-air baseline set: hold near an open window or door → dashboard NOW → *Setup & training* → *Set clean-air baseline*
+- [ ] Light sensor calibrated while it faces daylight → dashboard NOW → *Setup & training* → *Calibrate light to sky*
 - [ ] Phone dashboard open at `http://<pi-ip>:8000`, plus a laptop mirror if possible
 - [ ] Hand sanitizer or a dry-erase marker in your pocket
 - [ ] Speaker plugged in, volume checked (or laptop audio)
@@ -17,7 +17,7 @@
 2. **The device (15 s).** It sits on the windowsill. *"SkyWindow watches the sky above you and the air in your room, and gives you one answer."* Point at the green LCD showing **OPEN THE WINDOW**.
 3. **Indoor spike (20 s).** Open the sanitizer next to the sensor. Within seconds it turns purple: **VENTILATE NOW**.
 4. **The sky (30 s).** Show the phone dashboard: live AQI, smoke haze, the wind arrow, and **sunbeam through haze**. *"It uses the Beer–Lambert law to show how much sunlight gets through the haze overhead."* Cover the light sensor to show the sky-clarity reading drop.
-5. **Smoke Day replay (30 s).** Press *Start replay*. The sky turns orange and the LCD turns red: **KEEP IT SHUT**. Press **🔊 Announce** and it reads the warning aloud.
+5. **Smoke Day replay (30 s).** On the dashboard's NOW view press **▶ Replay June 7, 2023**. The verdict and the LCD turn red: **KEEP IT SHUT**. Press **🔊 Announce** and it reads the warning aloud. Press **■ Stop replay** to return to live data.
 6. **PHS Campus + Earth (25 s).** Open PHS CAMPUS and click a spot near PHS (e.g. downtown Trenton). Show its AQI and weather, then point at the orange NASA fire dots: *"These are satellite fire detections from this week. SkyWindow checks if any are upwind of PHS."* Then open EARTH and tap New Delhi. The side-by-side shows how its air compares with ours right now.
 7. **Close (10 s).** *"AQI apps tell you about outside. SkyWindow compares the sky with your room and tells you what to do about it."*
 

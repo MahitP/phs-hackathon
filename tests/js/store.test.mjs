@@ -95,6 +95,19 @@ test("without a Pi the page falls back to the showcase sky, every 5 s", async ()
   assert.equal(calls.local, 2);
 });
 
+test("a Pi that has no sky data yet is still the source, never the showcase", async () => {
+  const noSky = { ...PI_STATE, sky: null };
+  const { store, time, calls } = setup({ pi: () => ({ ok: true, status: 200, json: async () => noSky }) });
+  store.start("live");
+  await flush(); await flush();
+  assert.equal(store.get().source, "pi");
+  assert.equal(store.get().status, "ok");
+  assert.equal(store.get().live.verdict, "open");
+  assert.equal(store.get().live.aqi, undefined);
+  await time.run(2000);
+  assert.equal(calls.local, 0, "Open-Meteo is never asked while a Pi answers");
+});
+
 test("a Pi still warming up says so", async () => {
   const { store } = setup({ pi: "warming" });
   store.start("live");

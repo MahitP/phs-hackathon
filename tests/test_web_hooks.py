@@ -120,10 +120,11 @@ def test_known_hooks_are_still_queried():
     hooks = _hooks(_page())
     for i in ("verdict-label", "reasons", "aqi", "aqi-cat", "stale", "stale-bar", "app",
               "local-card", "explore-card", "fire-line", "btn-announce", "btn-sound", "btn-orbit",
-              "mode-chip", "clock", "x-aqi", "c-aqi", "wx-cond", "l-aqi", "pi-stale", "po-aqi", "localmap", "globe"):
+              "mode-chip", "clock", "x-aqi", "c-aqi", "wx-cond", "l-aqi", "pi-stale", "po-aqi", "localmap", "globe",
+              "btn-device-replay", "fc-strip", "fc-best"):
         assert i in hooks["id"], f"#{i} is no longer looked up by the scripts"
     attrs = {a for a, _ in hooks["attr"]}
-    for a in ("data-cal", "data-label", "data-mock", "data-base", "data-layer", "data-view", "data-region", "role"):
+    for a in ("data-cal", "data-label", "data-mock", "data-region", "role"):  # map buttons moved onto the map (local.js)
         assert a in attrs, f"[{a}] is no longer queried by the scripts"
     for c in ("server-only", "mock-only", "panel"):
         assert c in hooks["class"], f".{c} is no longer queried by the scripts"

@@ -29,7 +29,8 @@ const LocalSky = (() => {
         current: "us_aqi,pm2_5,pm10,ozone,dust,aerosol_optical_depth,uv_index", hourly: "us_aqi,pm2_5,aerosol_optical_depth" })),
       weather("https://api.open-meteo.com/v1/forecast?" + qs({ ...base,
         current: WX_NOW + ",shortwave_radiation",
-        hourly: "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability" })),
+        hourly: "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability,weather_code",
+        daily: "sunrise,sunset,uv_index_max" })),
     ]);
     const c = { ...aq.current, ...wx.current };
     sky = { time: c.time, us_aqi: c.us_aqi, pm2_5: c.pm2_5, pm10: c.pm10, ozone: c.ozone, dust: c.dust,
@@ -37,7 +38,9 @@ const LocalSky = (() => {
       wind_speed: c.wind_speed_10m, wind_dir: c.wind_direction_10m, radiation: c.shortwave_radiation, is_day: c.is_day,
       forecast: { time: aq.hourly.time, us_aqi: aq.hourly.us_aqi, pm2_5: aq.hourly.pm2_5, aod: aq.hourly.aerosol_optical_depth,
         cloud_cover: wx.hourly.cloud_cover, wind_dir: wx.hourly.wind_direction_10m,
-        temperature: wx.hourly.temperature_2m, precip_prob: wx.hourly.precipitation_probability },
+        temperature: wx.hourly.temperature_2m, precip_prob: wx.hourly.precipitation_probability,
+        weather_code: wx.hourly.weather_code, wind_speed: wx.hourly.wind_speed_10m },
+      daily: wx.daily ? { time: wx.daily.time, sunrise: wx.daily.sunrise, sunset: wx.daily.sunset, uv_max: wx.daily.uv_index_max } : null,
       source: "live", stale: false };
     fetchedAt = Date.now();
   }

@@ -1,10 +1,13 @@
 // Close-up map of Princeton (Leaflet). Used as the NOW tab's city view and the LOCAL tab's school view.
 // The story's Earth dives into it at zoom 6 (wide()), then it flies down to the city.
-// The SkyWindow device marker at PHS shows the Raspberry Pi's live INSIDE reading next to the outside air.
+// The SkyWindow device marker at PHS shows the Raspberry Pi's live INSIDE reading next to the outside air,
+// and the dashed outline is the official PHS school grounds (OpenStreetMap).
+// One small control on the map works the same in every view: recenter, satellite/map, fires.
 // Base layers (no API keys): Esri World Imagery + Esri reference labels, or OpenStreetMap tiles.
 const LocalMap = (() => {
   const PHS = [40.3587, -74.656];
-  let map, sat, dark, labels, gridLayer, fireLayer, pickMarker, deviceMarker, onAnalyze = () => {}, ready = false, gridLoaded = false;
+  let map, sat, dark, labels, fireLayer, campusLayer, pickMarker, deviceMarker, onAnalyze = () => {}, ready = false;
+  let mode = "city", base = "sat", firesOn = true, campusRing = null, ctl = null;
 
   function init(el) {
     if (ready) return;
@@ -26,9 +29,10 @@ const LocalMap = (() => {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     });
     sat.addTo(map); labels.addTo(map);
+    addControl();
 
-    gridLayer = L.layerGroup();
     fireLayer = L.layerGroup().addTo(map);
+    campusLayer = L.layerGroup().addTo(map);
 
     deviceMarker = L.marker(PHS, {
       icon: L.divIcon({ className: "device-pin", html: '<span class="pulse"></span><span class="core"></span>', iconSize: [22, 22] }),
@@ -37,6 +41,53 @@ const LocalMap = (() => {
     deviceMarker.bindTooltip("SkyWindow · Princeton High School", { permanent: true, direction: "right", offset: [14, 0], className: "device-tip" });
 
     map.on("click", (e) => analyze(e.latlng.lat, e.latlng.lng));
+    loadCampus();
+  }
+
+  async function loadCampus() {
+    try {
+      const campus = await fetch("geo/phs_campus.json").then((r) => r.json());
+      campusRing = campus.geometry.coordinates[0].map(([x, y]) => [y, x]);
+      L.polygon(campusRing, { color: "#86efac", weight: 2, dashArray: "6 4", fillColor: "#22c55e", fillOpacity: 0.08, interactive: false })
+        .addTo(campusLayer);
+    } catch (e) { console.warn("campus outline failed", e); }
+  }
+
+  /** Is (lat, lon) on the PHS school grounds (official OSM outline)? Ray-casting point-in-polygon. */
+  function onCampus(lat, lon) {
+    if (!campusRing) return false;
+    let inside = false;
+    for (let i = 0, j = campusRing.length - 1; i < campusRing.length; j = i++) {
+      const [yi, xi] = campusRing[i], [yj, xj] = campusRing[j];
+      if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // ---- the one map control: recenter / satellite-map / fires ----
+  function addControl() {
+    const C = L.Control.extend({
+      onAdd() {
+        const d = L.DomUtil.create("div", "map-ctl mono");
+        d.innerHTML = '<button data-c="center" title="Recenter on PHS">⌖ RECENTER</button>' +
+          '<button data-c="base" title="Switch satellite / map">MAP</button>' +
+          '<button data-c="fires" class="on" aria-pressed="true" title="NASA satellite fire detections, last 7 days">🔥 FIRES</button>';
+        L.DomEvent.disableClickPropagation(d);
+        d.onclick = (e) => {
+          const btn = e.target.closest("button");
+          const c = btn && btn.dataset.c;
+          if (c === "center") view(mode);
+          if (c === "base") setBase(base === "sat" ? "map" : "sat");
+          if (c === "fires") {
+            firesOn = !firesOn;
+            firesOn ? fireLayer.addTo(map) : map.removeLayer(fireLayer);
+            btn.classList.toggle("on", firesOn); btn.setAttribute("aria-pressed", String(firesOn));
+          }
+        };
+        return d;
+      },
+    });
+    ctl = new C({ position: "bottomright" }).addTo(map);
   }
 
   /** Live device card next to the PHS marker: inside (Raspberry Pi) vs outside. */
@@ -50,22 +101,6 @@ const LocalMap = (() => {
       `<div class="dt-row"><span>${d.insideLabel || "INSIDE " + (d.mock ? "(DEV MODE)" : "(RASPBERRY PI)")}</span><b>${d.inside}</b></div>` +
       `<div class="dt-row"><span>OUTSIDE AQI</span><b style="color:${d.catColor}">${d.aqi} ${d.cat}</b></div>` +
       `<div class="dt-row"><span>WEATHER</span><b>${d.weather}</b></div>`);
-  }
-
-  async function loadGrid() {
-    if (gridLoaded) return;
-    gridLoaded = true;
-    try {
-      const cells = await LocalSky.aqiGrid(PHS[0], PHS[1], 9, 0.12);
-      for (const c of cells) {
-        if (c.us_aqi == null) continue;
-        const cat = LocalSky.aqiCategory(c.us_aqi);
-        L.rectangle([[c.lat - c.dlat / 2, c.lon - c.dlon / 2], [c.lat + c.dlat / 2, c.lon + c.dlon / 2]], {
-          stroke: false, fillColor: cat.color, fillOpacity: 0.14, interactive: false,
-        }).addTo(gridLayer);
-        L.marker([c.lat, c.lon], { interactive: false, icon: L.divIcon({ className: "aqi-label", html: c.us_aqi, iconSize: [30, 14] }) }).addTo(gridLayer);
-      }
-    } catch (e) { gridLoaded = false; console.warn("AQI grid failed", e); }
   }
 
   function setFires(fires) {
@@ -92,6 +127,7 @@ const LocalMap = (() => {
   /** Fly to a view of PHS: "city" (Princeton, ~zoom 13) or "school" (the building, ~zoom 17).
    *  hold: keep the place names and roads out of the flight, and fade them in on arrival */
   function view(kind, fly = true, { holdLabels: hold = false } = {}) {
+    mode = kind;
     map.invalidateSize();
     if (hold && fly) { holdLabels(true); map.once("moveend", () => holdLabels(false)); }
     else holdLabels(false);
@@ -102,14 +138,10 @@ const LocalMap = (() => {
   }
 
   function setBase(kind) {
+    base = kind;
     if (kind === "map") { map.removeLayer(sat); map.removeLayer(labels); dark.addTo(map); }
     else { map.removeLayer(dark); sat.addTo(map); labels.addTo(map); }
-  }
-
-  function toggle(layer, on) {
-    if (layer === "grid" && on) loadGrid();
-    const l = layer === "grid" ? gridLayer : fireLayer;
-    on ? l.addTo(map) : map.removeLayer(l);
+    ctl.getContainer().querySelector('[data-c="base"]').textContent = kind === "map" ? "SATELLITE" : "MAP";
   }
 
   /** place names and roads off (instantly) or back on (fading): Leaflet blows them up mid-zoom */
@@ -137,6 +169,6 @@ const LocalMap = (() => {
     return map.distance([PHS[0], b.getWest()], [PHS[0], b.getEast()]) / 1000;
   }
 
-  return { init, view, wide, widthKm, setBase, updateDevice, setFires, analyze, setPickColor, toggle,
+  return { init, view, wide, widthKm, updateDevice, setFires, analyze, setPickColor, onCampus,
     onAnalyze: (cb) => (onAnalyze = cb), invalidate: () => ready && map.invalidateSize(), PHS };
 })();

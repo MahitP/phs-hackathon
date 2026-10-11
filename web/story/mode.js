@@ -56,7 +56,10 @@ export function showLive(l, hud) {
   const word = document.getElementById("now-verdict");
   if (word) { word.textContent = LABEL[v]; word.dataset.v = v; word.style.fontStretch = STRETCH[v] + "%"; }
   hud.set("now-why", WHY[v]);
-  const roomTxt = l.stale != null ? `, room ${Math.round(l.stale)} of 100${l.mode !== "device" || l.mock ? " (simulated)" : ""}` : "";
-  const src = l.mode === "device" ? (l.mock ? "from the Pi server, with simulated sensors" : "from the Raspberry Pi at PHS") : l.mode === "cached" ? "last saved reading" : "live sky, simulated room";
+  const roomTxt = l.offline ? ", room sensor offline"
+    : l.stale != null ? `, room ${Math.round(l.stale)} of 100${l.mode === "showcase" ? " (simulated)" : ""}` : "";
+  const src = l.replay ? `replaying ${l.replay.label || "June 7, 2023"} on the device (recorded data, not today)`
+    : l.mode === "device" ? (l.feed === "backup" ? "from the SkyWindow backup feed" : l.mock ? "from the SkyWindow server in dev mode" : "from the Raspberry Pi at PHS")
+    : l.mode === "cached" ? "last saved reading" : "live sky, simulated room";
   hud.set("now-note", `AQI ${aqi ?? "?"} outside${roomTxt}. ${src.charAt(0).toUpperCase() + src.slice(1)}, ${when}.`);
 }

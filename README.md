@@ -52,14 +52,14 @@ Scroll snaps to each hero pose. Sound is generated in the browser and follows th
 
 **The live dashboard** (`app.html`, reached through the dive from the story):
 
-1. **Now:** after the flight from space, the globe hands off to a close **satellite view of Princeton** with the SkyWindow device marker at PHS. The panel shows the verdict, outside (sky) vs inside (classroom) readings, current weather at PHS (conditions, temperature/feels-like, humidity, wind/gusts, rain), recent fires, and the 🔊 Announce button.
+1. **Now:** after the flight from space, the globe hands off to a close **satellite view of Princeton** with the SkyWindow device marker at PHS. The panel shows the verdict, outside (sky) vs inside (classroom) readings, current weather at PHS (conditions, temperature/feels-like, humidity, wind/gusts, rain), recent fires, the 🔊 Announce button and (on the device) **▶ Replay June 7, 2023**, which makes the Pi relive the 2023 smoke day on its LCD, verdict and voice until you press it again.
 2. **PHS Campus** (local, within 25 km): zooms in on **Princeton High School** itself. You get the Raspberry Pi's live inside-the-school readings (stale index, trend, raw air sensor, light at the window, device status) next to the outside air and weather. The device marker on the map carries the same live card. The dashed green outline is the official PHS school grounds (OpenStreetMap). Only clicks inside it count as "on PHS school grounds". Click anywhere within 25 km for that spot's air and weather.
 
 **Map controls:** every map view has the same small control in the corner: recenter, satellite/map and NASA fires.
-3. **Forecast — "When can PHS open its windows?"** An hour-by-hour strip for the next 24 hours: weather icon, temperature, AQI, rain chance and a window verdict per hour (open, either, shut for bad air, shut for rain). It also highlights the best daytime window to air out and shows sunrise, sunset, max UV, wind and haze. Hourly rules: shut if the forecast AQI is over 100, PM2.5 is over 35 or there's heavy haze; shut if rain is 60%+ likely; open if AQI is 50 or less and it's dry.
-4. **Earth** (global context): city dots on the 3D globe in EPA colors, a breakdown of how many of 43 cities are Good, Moderate, Unhealthy and so on, the median AQI, and region jumps. Tap anywhere for a **side-by-side comparison with PHS** (AQI, PM2.5, haze, weather, temperature, humidity, wind, local time). Earth never shows the classroom sensor or a windows verdict. Those belong to PHS Campus, and clicks more than 25 km from PHS on the campus map are sent to Earth.
-5. **2023 Record:** the real recorded atmosphere of June 7, 2023 (Canadian wildfire smoke over NJ), clearly labeled as historical. The map is locked to **New Jersey only**: everything outside the state border (OpenStreetMap) is masked, and the smoke layer follows each hour's recorded haze.
-6. **System:** how SkyWindow works.
+3. **Forecast — "When can PHS open its windows?"** An hour-by-hour strip for the next 24 hours: weather icon, temperature, AQI, rain chance and a window verdict per hour (open, either, shut for bad air, shut for rain). It also highlights the best daytime window to air out and shows sunrise, sunset, max UV, clouds and ozone. On the device it also charts the last hour of the room vs the sky from the Pi's history. Hourly rules: shut if the forecast AQI is over 100, PM2.5 is over 35 or there's heavy haze; shut if rain is 60%+ likely; open if AQI is 50 or less and it's dry.
+4. **Earth** (global context): city dots on the 3D globe in EPA colors, a breakdown of how many of 43 cities are Good, Moderate, Unhealthy and so on, the median AQI, and region jumps, with each city's name and AQI next to its dot. Tap anywhere for a **side-by-side comparison with PHS** (AQI, PM2.5, haze, weather, temperature, humidity, wind, local time). Earth never shows the classroom sensor or a windows verdict. Those belong to PHS Campus, and clicks more than 25 km from PHS on the campus map are sent to Earth.
+
+The June 7, 2023 smoke day and how SkyWindow works are told by the story, so the dashboard keeps to these four views.
 
 **Real alerts:**
 - A red banner appears if the air over PHS is actually unhealthy (AQI > 100). It shows the EPA category, the likely cause and the EPA's health guidance.
@@ -70,7 +70,7 @@ Scroll snaps to each hero pose. Sound is generated in the browser and follows th
 
 The site runs in one of two modes:
 
-- **Device mode:** served by the Pi at `http://<pi-ip>:8000/app.html`, using its live sensors.
+- **Device mode:** served by the Pi at `http://<pi-ip>:8000` (story) or `http://<pi-ip>:8000/app.html` (dashboard). Both the story and the dashboard read the Pi's `/api/now`, so the Pi's verdict, room reading, forecast and fires show everywhere. The status chip says which source is live: **DEVICE LIVE** (Raspberry Pi sensors), **DEVICE · SENSOR OFFLINE** (Pi running but the Grove HAT/sensor isn't answering, so the verdict uses outside air only), **DEVICE · BACKUP FEED** (the backup backend on port 8001) or **DEVICE · DEV MODE** (laptop with mock sensors). The page must be opened from the server's own address: a copy of `web/` served by anything else can't reach the Pi and runs in showcase mode.
 - **Showcase mode:** opened anywhere without the Pi. For example, serve `web/` from any static host, or run `python -m http.server -d web`. The page fetches the sky straight from Open-Meteo and simulates the room sensor, so judges can try it on their own phones.
 
 ## Raspberry Pi backend + backup backend (kept separate)

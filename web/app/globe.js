@@ -257,10 +257,22 @@ const Globe = (() => {
   function panelShift() { return innerWidth > 900 ? Math.min(640, innerWidth * 0.46) / 2 : 0; }
 
   // live air-quality dots for world cities (size + color = EPA category)
-  let cityGroup = null;
+  let cityGroup = null, citiesOn = false, labelBox = null, cityLabels = [];
   function setCities(list) {
     if (cityGroup) { earth.remove(cityGroup); cityGroup.traverse((o) => o.geometry && o.geometry.dispose()); }
     cityGroup = new THREE.Group();
+    cityGroup.visible = citiesOn;
+    // name + AQI labels that follow the dots (only the ones facing the camera are shown); they live in the
+    // app's layer, right above the globe, so they can never show over the story or the map
+    if (!labelBox) { labelBox = document.createElement("div"); labelBox.id = "city-labels"; labelBox.hidden = !citiesOn; renderer.domElement.after(labelBox); }
+    labelBox.innerHTML = "";
+    cityLabels = list.map((c) => {
+      const el = document.createElement("div");
+      el.className = "city-label mono";
+      el.innerHTML = `${c.name.replace(" (PHS)", "")} <b style="color:${c.category.color}">${c.us_aqi}</b>`;
+      labelBox.appendChild(el);
+      return { el, pos: latLon(c.lat, c.lon, 1.01) };
+    });
     for (const c of list) {
       const at = latLon(c.lat, c.lon, 1.0);
       const r = 0.006 + Math.max(0, c.category.level) * 0.0025;
@@ -272,7 +284,22 @@ const Globe = (() => {
       cityGroup.add(dot, halo);
     }
     earth.add(cityGroup);
-    gsap.from(cityGroup.scale, { x: 0.96, y: 0.96, z: 0.96, duration: 0.6 });
+  }
+  /** City dots and labels belong to EARTH only. */
+  function showCities(on) { citiesOn = on; if (cityGroup) cityGroup.visible = on; if (labelBox) labelBox.hidden = !on; }
+  const _v = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Vector3();
+  function placeLabels() {
+    if (!citiesOn || !cityLabels.length) return;
+    camera.getWorldPosition(_c);
+    for (const l of cityLabels) {
+      _v.copy(l.pos); earth.localToWorld(_v);
+      _n.copy(_v).normalize();
+      const facing = _n.dot(_c.clone().sub(_v).normalize()) > 0.25; // hide labels on the far side / near the rim
+      _v.project(camera);
+      if (!facing || Math.abs(_v.x) > 1.05 || Math.abs(_v.y) > 1.05) { l.el.style.display = "none"; continue; }
+      l.el.style.display = "";
+      l.el.style.transform = `translate(${(_v.x + 1) / 2 * innerWidth + 8}px, ${(1 - _v.y) / 2 * innerHeight - 7}px)`;
+    }
   }
 
   function placeSun() {
@@ -310,6 +337,7 @@ const Globe = (() => {
     ring.material.opacity = 1 - pulse;
     stars.rotation.y = s * 0.002;
     renderer.render(scene, camera);
+    placeLabels();
   }
 
   /** Fly from orbit down to a view over Princeton. */
@@ -353,6 +381,6 @@ const Globe = (() => {
     ring.material.color.set(hex);
   }
 
-  return { init, start, stop, compile, snapHome, focusHome, release, setSky, setVerdictColor, flyTo, setDistance, dropPin, hidePin, setCities, plunge, resetZoom,
+  return { init, start, stop, compile, snapHome, focusHome, release, setSky, setVerdictColor, flyTo, setDistance, dropPin, hidePin, setCities, showCities, plunge, resetZoom,
     onPick: (cb) => (pickHandler = cb), HOME: { lat: LAT, lon: LON } };
 })();

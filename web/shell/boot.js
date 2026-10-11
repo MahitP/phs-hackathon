@@ -85,6 +85,7 @@ async function boot() {
   stage.addWorld("room", createRoom({ renderer, tier, manager: lateManager }));
   const storyMode = createStoryMode({ stage, scroll, hud, sound: Sound, reduced });
   store.subscribe((s) => storyMode.setLive(s.live));
+  if (store.get().live) storyMode.setLive(store.get().live); // a reading that came in while the worlds loaded
 
   await assetsDone;
   // the Earth's 8K maps go up behind the loader (uploading them mid-story froze a frame for ~0.7 s)

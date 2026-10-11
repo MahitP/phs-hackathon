@@ -249,6 +249,7 @@
           <div id="event" class="mono"></div>
           <div class="row announce">
             <button class="ghost small" id="btn-announce" title="Read the verdict aloud">🔊 ANNOUNCE</button>
+            <button class="ghost small server-only" id="btn-device-replay" aria-pressed="false" title="Play the June 7, 2023 smoke day on the SkyWindow device">▶ REPLAY JUNE 7, 2023</button>
             <span class="mono fine" id="announce-text"></span>
             <audio id="audio" hidden></audio>
           </div>
@@ -332,15 +333,7 @@
               </dl>
             </div>
           </div>
-          <div class="row">
-            <button class="ghost small on" data-base="sat">SATELLITE</button>
-            <button class="ghost small" data-base="map">MAP</button>
-            <button class="ghost small on" data-layer="fires">FIRES</button>
-            <button class="ghost small" data-layer="grid">AQI GRID</button>
-            <button class="ghost small" data-view="school">⌂ SCHOOL</button>
-            <button class="ghost small" data-view="city">CITY</button>
-          </div>
-          <p class="mono fine">CLICK ANY STREET, PARK OR BUILDING WITHIN 25 KM OF PHS FOR A DETAILED READING. FOR ANYWHERE ELSE, USE <b>EARTH</b>.</p>
+          <p class="mono fine">THE DASHED GREEN LINE IS THE PHS SCHOOL GROUNDS (OPENSTREETMAP). CLICK ANY STREET, PARK OR BUILDING WITHIN 25 KM OF PHS FOR A DETAILED READING. FOR ANYWHERE ELSE, USE <b>EARTH</b>. THE MAP'S CORNER CONTROL RECENTERS, SWITCHES SATELLITE / MAP AND SHOWS NASA FIRES.</p>
           <div id="local-out" class="explore-card" hidden>
             <div class="mono label" id="lo-dist">–</div>
             <p>That spot is outside the PHS campus area. Look at it in the global view instead.</p>
@@ -383,18 +376,26 @@
           </div>
           <div class="mono label mt">RECENT FIRES · NASA FIRMS</div>
           <div id="fire-summary" class="fire-summary">Loading satellite fire detections…</div>
-          <p class="mono fine">AIR DATA: CAMS MODEL VIA OPEN-METEO. ITS GRID IS ABOUT 40 KM, SO NEARBY SQUARES OFTEN SHARE A VALUE; STREET-LEVEL DIFFERENCES NEED GROUND SENSORS. FIRES: VIIRS SATELLITE THERMAL DETECTIONS (LOW-CONFIDENCE REMOVED). THESE INCLUDE SMALL CROP/BRUSH BURNS AND SOME INDUSTRIAL HEAT SOURCES, NOT ONLY WILDFIRES.</p>
+          <p class="mono fine">AIR DATA: CAMS MODEL VIA OPEN-METEO. ITS GRID IS ABOUT 40 KM, SO NEARBY SPOTS OFTEN SHARE A VALUE; STREET-LEVEL DIFFERENCES NEED GROUND SENSORS. FIRES: VIIRS SATELLITE THERMAL DETECTIONS (LOW-CONFIDENCE REMOVED). THESE INCLUDE SMALL CROP/BRUSH BURNS AND SOME INDUSTRIAL HEAT SOURCES, NOT ONLY WILDFIRES.</p>
         </section>
 
         <!-- 03 FORECAST -->
         <section class="panel" id="tab-sky" role="tabpanel" hidden>
-          <div class="mono label">ATMOSPHERE ABOVE PRINCETON</div>
-          <h2>The next 24 hours of sky</h2>
-          <canvas id="forecast" height="200"></canvas>
+          <div class="scope sky mono">☁ THE SKY OVER PHS · NEXT 24 HOURS</div>
+          <h2>When can PHS open its windows?</h2>
+          <div class="best" id="fc-best">Reading the forecast…</div>
+          <div class="fc-strip mono" id="fc-strip" aria-label="Hour-by-hour sky forecast"></div>
+          <div class="legend mono">
+            <span style="--c:#16a34a">OPEN · CLEAN AIR, DRY</span><span style="--c:#d97706">EITHER WAY</span>
+            <span style="--c:#dc2626">KEEP SHUT · BAD AIR</span><span style="--c:#3b82f6">KEEP SHUT · RAIN LIKELY</span>
+          </div>
           <div class="grid3 mono">
-            <div><div class="label">OZONE</div><div class="val" id="ozone">–</div></div>
+            <div><div class="label">SUNRISE</div><div class="val" id="fc-rise">–</div></div>
+            <div><div class="label">SUNSET</div><div class="val" id="fc-set">–</div></div>
+            <div><div class="label">MAX UV TODAY</div><div class="val" id="fc-uv">–</div></div>
+            <div><div class="label">UV NOW</div><div class="val" id="uv">–</div></div>
             <div><div class="label">CLOUDS</div><div class="val" id="clouds">–</div></div>
-            <div><div class="label">UV INDEX</div><div class="val" id="uv">–</div></div>
+            <div><div class="label">OZONE</div><div class="val" id="ozone">–</div></div>
             <div><div class="label">SUN ELEVATION</div><div class="val" id="sun-el">–</div></div>
             <div><div class="label">CLEAR-SKY SUN</div><div class="val" id="clear-sky">–</div></div>
             <div><div class="label">TEMPERATURE</div><div class="val" id="temp">–</div></div>
@@ -412,8 +413,11 @@
               <p class="fine">Arrow shows where the air is heading. Smoke travels with it.</p>
             </div>
           </div>
-          <h2>Last hour, inside vs outside</h2>
-          <canvas id="chart" height="170"></canvas>
+          <p class="mono fine">HOW EACH HOUR IS DECIDED: KEEP SHUT IF THE FORECAST AQI IS OVER 100, PM2.5 IS OVER 35 µg/m³ OR SMOKE HAZE IS HEAVY; KEEP SHUT IF RAIN IS 60%+ LIKELY; OPEN IF AQI IS 50 OR LESS AND RAIN IS UNLIKELY; OTHERWISE EITHER WAY. SOURCE: OPEN-METEO (CAMS AIR-QUALITY + WEATHER FORECAST MODELS).</p>
+          <div class="server-only">
+            <h2>Last hour, inside vs outside</h2>
+            <canvas id="chart" height="170"></canvas>
+          </div>
         </section>
 
         <!-- 04 EARTH -->

@@ -24,10 +24,13 @@ const SkyApp = (() => {
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
     return r.json();
   }
-  async function detectServer() {
-    try { const r = await fetch("api/now"); serverMode = r.ok || r.status === 503; } catch { serverMode = false; }
+  let detecting = null;
+  /** Asked once: is the page served by the Pi (its API answers, or is still starting up)? */
+  function detectServer() {
+    return (detecting ||= fetch("api/now").then((r) => { serverMode = r.ok || r.status === 503; }, () => { serverMode = false; }));
   }
-  async function getState() { return serverMode ? api("api/now") : LocalSky.state(); }
+  // the first poll can come before prepare() has asked, so every read waits for the answer
+  async function getState() { await detectServer(); return serverMode ? api("api/now") : LocalSky.state(); }
 
   function hazeOf(sky) {
     if (!sky) return 0;
@@ -114,7 +117,7 @@ const SkyApp = (() => {
   function hide() {
     appEl.classList.remove("shown");
     appEl.inert = true;
-    if (globeOK) { Globe.stop(); Globe.resetZoom(); }
+    if (globeOK) { Globe.stop(); Globe.resetZoom(); Globe.showCities(false); }
     gsap.killTweensOf(["#globe", "#localmap"]);
     $("globe").style.opacity = 0; $("localmap").style.opacity = 0;
     $("regions").hidden = true;
@@ -150,7 +153,7 @@ const SkyApp = (() => {
 
   // ---------- scenes: close-up map (NOW = city, LOCAL = school) or the 3D globe ----------
   const MAP_VIEWS = { now: "city", local: "school" }; // everything else shows the globe
-  const GLOBE_REGION_TABS = ["sky", "explore"];
+  const GLOBE_REGION_TABS = ["explore"]; // region focus + city dots belong to EARTH only
   let sceneIsMap = false;
   function showScene(name, plunge = false) {
     const view = MAP_VIEWS[name];
@@ -177,8 +180,10 @@ const SkyApp = (() => {
       }
       // closer, centred view of a region; default to North America the first time
       if (GLOBE_REGION_TABS.includes(name) && !explored) focusRegion(showScene.region || "44,-98,2.6");
+      if (name === "sky") Globe.flyTo(Globe.HOME.lat, Globe.HOME.lon, 1.6, 1.9); // the forecast is for the sky over PHS
     }
     $("regions").hidden = !GLOBE_REGION_TABS.includes(name) || !globeOK;
+    if (globeOK) Globe.showCities(name === "explore");
   }
 
   // ---------- live render ----------
@@ -227,10 +232,10 @@ const SkyApp = (() => {
     $("wx-hum").textContent = fmt(sky.humidity, 0, "%");
     $("wx-wind").textContent = sky.wind_speed == null ? "–" : `${fmt(sky.wind_speed, 0)}/${fmt(sky.wind_gusts, 0)} km/h ${s.wind_compass}`;
     $("wx-rain").textContent = fmt(sky.precipitation, 1, " mm");
-    renderFireLine(s.fires);
+    renderFireLine(s.fires, !!s.replay);
 
     // LOCAL: the Raspberry Pi inside the school vs the air outside
-    $("pi-label").textContent = s.feed === "backup" ? "INSIDE · BACKUP FEED" : s.mock ? "INSIDE · DEV MODE" : "INSIDE · RASPBERRY PI";
+    $("pi-label").textContent = !serverMode ? "INSIDE · NO DEVICE (SHOWCASE)" : s.feed === "backup" ? "INSIDE · BACKUP FEED" : s.mock ? "INSIDE · DEV MODE" : "INSIDE · RASPBERRY PI";
     $("local-scope").textContent = !serverMode ? "NO DEVICE (SHOWCASE)" : ind.offline ? "ROOM SENSOR OFFLINE" : s.feed === "backup" ? "BACKUP FEED" : s.mock ? "DEV MODE" : "ROOM SENSOR LIVE";
     $("pi-stale").textContent = ind.warming_up ? "…" : fmt(ind.stale_index);
     $("pi-trend").textContent = $("rate").textContent;
@@ -243,7 +248,7 @@ const SkyApp = (() => {
     $("po-wx").textContent = `${w.icon} ${w.text} ${fmt(sky.temperature, 0, "°C")}`;
     $("po-wind").textContent = $("wx-wind").textContent;
     LocalMap.updateDevice({ color: v.color, verdict: v.label, mock: s.mock || !serverMode,
-      insideLabel: s.feed === "backup" ? "INSIDE (BACKUP FEED)" : undefined,
+      insideLabel: !serverMode ? "INSIDE (SHOWCASE)" : s.feed === "backup" ? "INSIDE (BACKUP FEED)" : undefined,
       inside: noIndoor || (ind.warming_up ? "WARMING UP" : `STALE ${fmt(ind.stale_index)}/100 ${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"}`),
       aqi: fmt(sky.us_aqi), cat: cat.short || cat.label, catColor: cat.color, weather: `${w.icon} ${fmt(sky.temperature, 0, "°C")}` });
 
@@ -263,13 +268,15 @@ const SkyApp = (() => {
     chip.textContent = s.replay ? `REPLAY ${s.replay.clock}` : !serverMode ? "SHOWCASE MODE"
       : ind.offline ? "DEVICE · SENSOR OFFLINE" : s.feed === "backup" ? "DEVICE · BACKUP FEED" : s.mock ? "DEVICE · DEV MODE" : "DEVICE LIVE";
     const tick = `AQI ${fmt(sky.us_aqi)} · PM2.5 ${fmt(sky.pm2_5, 1)} · AOD ${fmt(sky.aod, 2)} · WIND ${s.wind_compass} ${fmt(sky.wind_speed, 0)} KM/H · ${v.label}`;
+    $("btn-device-replay").textContent = s.replay ? "■ STOP REPLAY" : "▶ REPLAY JUNE 7, 2023";
+    $("btn-device-replay").setAttribute("aria-pressed", String(!!s.replay));
     $("foot-ticker").textContent = tick + (sky.stale ? ` · OFFLINE, SKY DATA ${fmt(s.sky_age_min, 0)} MIN OLD` : "");
 
     qa(".server-only").forEach((e) => (e.hidden = !serverMode));
     qa(".mock-only").forEach((e) => (e.hidden = !s.mock));
 
     if (!explored) applySky(s);
-    if (activeTab === "sky") renderForecast(sky);
+    renderForecast(sky);
   }
 
   // EPA guidance for each AQI category (airnow.gov)
@@ -279,8 +286,9 @@ const SkyApp = (() => {
     "Everyone should avoid long or heavy outdoor exertion. Sensitive groups should stay indoors.",
     "Health warning: everyone should avoid all outdoor exertion."];
 
-  function renderFireLine(f) {
+  function renderFireLine(f, replaying) {
     const el = $("fire-line");
+    if (replaying) { el.className = "mono fireline"; el.textContent = "🔥 LIVE NASA FIRE DATA RETURNS WHEN THE REPLAY ENDS"; return; }
     if (!f || !f.available) { el.textContent = serverMode ? "FIRES: LOADING NASA SATELLITE DATA…" : ""; el.className = "mono fireline"; return; }
     el.className = "mono fireline" + (f.smoke_risk ? " risk" : "");
     el.textContent = `🔥 NASA FIRE DETECTIONS (7 DAYS): ${f.within_50km} WITHIN 50 KM · ${f.within_100km} WITHIN 100 KM · ` +
@@ -323,7 +331,7 @@ const SkyApp = (() => {
     Chart.defaults.font.family = "JetBrains Mono";
     Chart.defaults.font.size = 10;
   }
-  let chart, fchart;
+  let chart;
   function lineChart(el, datasets, labels) {
     if (!hasChart) return null;
     return new Chart(el, {
@@ -345,21 +353,69 @@ const SkyApp = (() => {
     else { chart.data.labels = labels; chart.data.datasets.forEach((d, i) => (d.data = ds[i].data)); chart.update(); }
   }
 
-  function renderForecast(sky) {
-    if (!sky || !sky.forecast) return;
+  // ---------- forecast: when can PHS open its windows? (hour by hour, next 24 h) ----------
+  function hourVerdict(aqi, pm, aod, rain) {
+    if ((aqi != null && aqi > 100) || (pm != null && pm > 35.4) || (aod != null && aod > 0.7)) return { k: "shut", label: "BAD AIR", color: "#dc2626" };
+    if (rain != null && rain >= 60) return { k: "rain", label: "RAIN", color: "#3b82f6" };
+    if (aqi != null && aqi <= 50 && (rain == null || rain < 40)) return { k: "open", label: "OPEN", color: "#16a34a" };
+    return { k: "either", label: "EITHER", color: "#d97706" };
+  }
+  const hourLabel = (t) => { const h = +t.slice(11, 13); return h === 0 ? "12 AM" : h < 12 ? h + " AM" : h === 12 ? "12 PM" : h - 12 + " PM"; };
+  let lastLiveSky = null;
+  function renderForecast(skyIn) {
+    if (skyIn && skyIn.source !== "replay" && skyIn.forecast) lastLiveSky = skyIn; // never show 2023 data as a forecast
+    const sky = lastLiveSky;
+    if (!sky) return;
     const f = sky.forecast, nowKey = (sky.time || "").slice(0, 13);
     let i0 = f.time.findIndex((t) => t.slice(0, 13) >= nowKey); if (i0 < 0) i0 = 0;
-    const sl = (a) => a.slice(i0, i0 + 24);
-    const key = sl(f.time).join();
+    const key = f.time[i0] + "|" + sky.fetched_at;
     if (renderForecast.key === key) return;
     renderForecast.key = key;
-    const ds = [
-      { label: "AQI", data: sl(f.us_aqi), borderColor: "#60a5fa", tension: 0.3 },
-      { label: "HAZE (AOD×100)", data: sl(f.aod).map((x) => (x == null ? null : x * 100)), borderColor: "#ff7a2e", tension: 0.3 },
-      { label: "CLOUDS %", data: sl(f.cloud_cover), borderColor: "#94a3b8", borderDash: [3, 3], tension: 0.3 },
-    ];
-    if (fchart) fchart.destroy();
-    fchart = lineChart($("forecast"), ds, sl(f.time).map((t) => t.slice(11, 16)));
+
+    const at = (a, k) => (a ? a[k] : null);
+    const hours = [];
+    for (let k = i0; k < Math.min(i0 + 24, f.time.length); k++) {
+      const rain = at(f.precip_prob, k);
+      hours.push({ t: f.time[k], aqi: f.us_aqi[k], pm: f.pm2_5[k], aod: f.aod[k], rain, temp: at(f.temperature, k),
+        w: LocalSky.describeWeather(at(f.weather_code, k)), v: hourVerdict(f.us_aqi[k], f.pm2_5[k], f.aod[k], rain) });
+    }
+    $("fc-strip").innerHTML = hours.map((h, n) => `
+      <div class="fc-hour${n === 0 ? " now" : ""}" title="${hourLabel(h.t)}: ${h.w.text}, AQI ${h.aqi ?? "–"}, rain ${h.rain ?? "–"}%">
+        <div class="t">${n === 0 ? "NOW" : hourLabel(h.t)}</div>
+        <div class="i">${h.w.icon || "·"}</div>
+        <div>${fmt(h.temp, 0, "°")}</div>
+        <div class="a" style="color:${LocalSky.aqiCategory(h.aqi).color}">${fmt(h.aqi)}</div>
+        <div class="r">${h.rain == null ? "" : h.rain + "%"}</div>
+        <div class="v" style="background:${h.v.color}"></div>
+      </div>`).join("");
+
+    // best time to air out: longest run of OPEN hours in daytime (7 AM - 9 PM)
+    let best = null, run = null;
+    hours.forEach((h, n) => {
+      const hr = +h.t.slice(11, 13), day = hr >= 7 && hr <= 21;
+      if (h.v.k === "open" && day) { run = run || { a: n, b: n }; run.b = n; if (!best || run.b - run.a > best.b - best.a) best = { ...run }; }
+      else run = null;
+    });
+    const el = $("fc-best");
+    if (best) {
+      const seg = hours.slice(best.a, best.b + 1), known = seg.filter((h) => h.aqi != null);
+      const avg = known.length ? Math.round(known.reduce((x, h) => x + h.aqi, 0) / known.length) : null;
+      const end = hours[best.b + 1] ? hourLabel(hours[best.b + 1].t) : "later";
+      el.style.setProperty("--best", "#22c55e");
+      el.innerHTML = `Best time to open the windows: <b>${best.a === 0 ? "now" : hourLabel(seg[0].t)} – ${end}</b>. Clean air${avg != null ? ` (AQI ≈ ${avg})` : ""} and dry.`;
+    } else {
+      const bad = hours.filter((h) => h.v.k === "shut").length, wet = hours.filter((h) => h.v.k === "rain").length;
+      el.style.setProperty("--best", "#f59e0b");
+      el.innerHTML = bad > hours.length / 2 ? `<b>Keep windows shut</b> for most of the next day. The forecast shows unhealthy air over PHS.`
+        : wet > hours.length / 3 ? `<b>Rain is likely</b> for much of the day, so there's no great window to air out.`
+        : `<b>No fully clean window</b> in daylight. The air stays "moderate", so airing out is fine but not ideal.`;
+    }
+
+    const today = sky.daily ? sky.daily.time.indexOf(nowKey.slice(0, 10)) : -1;
+    const tm = (iso) => (iso ? new Date(iso + ":00").toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "–");
+    $("fc-rise").textContent = today >= 0 ? tm(sky.daily.sunrise[today]) : "–";
+    $("fc-set").textContent = today >= 0 ? tm(sky.daily.sunset[today]) : "–";
+    $("fc-uv").textContent = today >= 0 ? fmt(sky.daily.uv_max[today], 1) : "–";
   }
 
   // ---------- announce: read the verdict aloud (ElevenLabs on the device, browser voice otherwise) ----------
@@ -372,6 +428,15 @@ const SkyApp = (() => {
       if (rep.audio_url) { $("audio").src = rep.audio_url; await $("audio").play().catch(() => {}); }
       else if ("speechSynthesis" in window) { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(rep.text)); }
     } catch (e) { $("announce-text").textContent = "Couldn't announce: " + e.message; }
+    b.disabled = false;
+  };
+
+  // ---------- replay: the device relives June 7, 2023 (LCD, verdict and voice), then press again to stop ----------
+  $("btn-device-replay").onclick = async () => {
+    const b = $("btn-device-replay");
+    b.disabled = true;
+    try { await api("api/replay", { on: !(latest && latest.replay) }); await poll(); }
+    catch (e) { alert("Replay: " + e.message); }
     b.disabled = false;
   };
 
@@ -469,7 +534,7 @@ const SkyApp = (() => {
     $("local-out").hidden = true;
     localPick = { lat, lon };
     $("local-card").hidden = false;
-    $("l-coords").textContent = `${lat.toFixed(3)}°, ${lon.toFixed(3)}° · ${km < 1 ? "AT PHS" : km.toFixed(1) + " KM " + LocalSky.compass(bearingDeg(plat, plon, lat, lon)) + " OF PHS"}`;
+    $("l-coords").textContent = `${lat.toFixed(3)}°, ${lon.toFixed(3)}° · ${LocalMap.onCampus(lat, lon) ? "ON PHS SCHOOL GROUNDS" : km.toFixed(1) + " KM " + LocalSky.compass(bearingDeg(plat, plon, lat, lon)) + " OF PHS"}`;
     $("l-place").textContent = "Reading the air…";
     $("l-around").textContent = "Scanning OpenStreetMap for roads, parks and industry nearby (can take ~10 s)…";
     $("l-fire").textContent = "…";
@@ -523,15 +588,6 @@ const SkyApp = (() => {
       gsap.fromTo("#local-card", { opacity: 0.4 }, { opacity: 1, duration: 0.4 });
     } catch (e) { $("l-place").textContent = "Couldn't read this spot (" + e.message + ")"; }
   });
-  qa("[data-layer]").forEach((b) => (b.onclick = () => {
-    b.classList.toggle("on");
-    LocalMap.toggle(b.dataset.layer, b.classList.contains("on"));
-  }));
-  qa("[data-base]").forEach((b) => (b.onclick = () => {
-    qa("[data-base]").forEach((x) => x.classList.toggle("on", x === b));
-    LocalMap.setBase(b.dataset.base);
-  }));
-  qa("[data-view]").forEach((b) => (b.onclick = () => LocalMap.view(b.dataset.view)));
 
   async function loadFires() {
     if (!serverMode) {
