@@ -57,3 +57,15 @@ def test_model_with_wrong_feature_count_is_ignored():
         n_features_in_ = 4
 
     assert appmod.check_model(Old()) is None
+
+
+def test_site_files_revalidate_but_big_bundles_stay_cached():
+    # an updated Pi must never serve a stale mix of old and new HTML/JS/CSS
+    for path in ("/", "/app.html", "/shell/boot.js", "/app/app.js"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers.get("cache-control") == "no-cache", path
+    for path in ("/vendor/gsap.min.js", "/assets/audio/cues.json"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers.get("cache-control") != "no-cache", path

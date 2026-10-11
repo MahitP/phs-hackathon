@@ -1,0 +1,9 @@
+{
+  "name": "skywindow-web-tests",
+  "private": true,
+  "type": "module",
+  "description": "No build step: web/ is served as is. This file only runs the browser code's unit tests in Node.",
+  "scripts": {
+    "test": "node --test tests/js/*.test.mjs"
+  }
+}

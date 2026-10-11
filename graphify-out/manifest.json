@@ -1,0 +1,23 @@
+{
+  "web/app.js": 1791664025.8776608,
+  "server/store.py": 1791664025.8774538,
+  "server/clarity.py": 1791664025.877038,
+  "server/__init__.py": 1791664025.8767662,
+  "server/sky.py": 1791664025.8773859,
+  "server/voice.py": 1791664025.8775187,
+  "server/decide.py": 1791664025.8771203,
+  "server/replay.py": 1791664025.8771973,
+  "server/app.py": 1791664025.876945,
+  "server/report.py": 1791664025.8773022,
+  "ml/__init__.py": 1791664025.8761556,
+  "ml/features.py": 1791664025.876252,
+  "ml/train.py": 1791664025.8763273,
+  "scripts/fetch_smoke_day.py": 1791664025.876602,
+  "scripts/dev.py": 1791664025.87652,
+  "device/lcd.py": 1791664025.8760743,
+  "device/hw.py": 1791664025.87599,
+  "device/__init__.py": 1791664025.8758695,
+  "requirements.txt": 1791664025.876398,
+  "DEMO.md": 1791664025.8754117,
+  "README.md": 1791664025.87562
+}

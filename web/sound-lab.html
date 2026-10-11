@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyWindow Sound Lab</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="vendor/fonts/archivo.css">
+  <style>
+    :root { --white: #F2F3F0; --ink: #1C2024; --slate: #5B636B; --rail: #CDD1CF; --tone: #E4E6E3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--white); color: var(--ink); font: 15px/1.45 Archivo, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+    main { max-width: 1120px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { margin: 0 0 4px; font-size: 28px; font-weight: 700; }
+    .lede { margin: 0 0 20px; color: var(--slate); max-width: 70ch; }
+    .buses { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: center; padding: 14px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rail); position: sticky; top: 0; background: var(--white); z-index: 2; }
+    .buses label { display: flex; gap: 10px; align-items: center; font-weight: 560; }
+    .buses input { width: 140px; accent-color: var(--ink); }
+    h2 { margin: 28px 0 8px; font-size: 20px; font-weight: 680; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 13px; font-weight: 560; color: var(--slate); padding: 6px 8px; border-bottom: 1px solid var(--rail); }
+    td { padding: 8px; border-bottom: 1px solid var(--tone); vertical-align: top; }
+    td.name { font-weight: 640; white-space: nowrap; }
+    td.num { white-space: nowrap; color: var(--slate); }
+    td.credit { font-size: 13px; color: var(--slate); }
+    td.credit a { color: inherit; }
+    .note { display: block; font-size: 13px; color: var(--slate); font-weight: 420; }
+    .acts { white-space: nowrap; }
+    button { font: inherit; font-size: 14px; font-weight: 560; min-height: 36px; padding: 0 12px; border: 1.5px solid #B9BEBB; background: transparent; color: var(--ink); cursor: pointer; border-radius: 2px; }
+    button[aria-pressed="true"] { background: var(--ink); color: var(--white); border-color: var(--ink); }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    .meter { display: inline-block; width: 64px; height: 6px; background: var(--tone); vertical-align: middle; margin-left: 8px; }
+    .meter i { display: block; height: 100%; width: 0; background: var(--ink); }
+    @media (max-width: 760px) { td.credit, th.credit { display: none; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Sound Lab</h1>
+  <p class="lede">Every sound SkyWindow ships, as built by <code>scripts/fetch_audio.py</code>. Play each one, loop the beds and the score, and jump to just before a loop's seam to check it's gapless. Not linked from the site.</p>
+  <div class="buses" role="group" aria-label="Levels">
+    <label>Music <input type="range" min="0" max="100" value="80" data-bus="music"></label>
+    <label>Beds <input type="range" min="0" max="100" value="80" data-bus="bed"></label>
+    <label>Effects <input type="range" min="0" max="100" value="80" data-bus="sfx"></label>
+    <span id="status" class="note" aria-live="polite"></span>
+  </div>
+  <section><h2>Score</h2><table><thead><tr><th>Cue</th><th>Length</th><th></th><th class="credit">Source</th></tr></thead><tbody data-kind="music"></tbody></table></section>
+  <section><h2>Beds</h2><table><thead><tr><th>Cue</th><th>Length</th><th></th><th class="credit">Source</th></tr></thead><tbody data-kind="bed"></tbody></table></section>
+  <section><h2>Effects</h2><table><thead><tr><th>Cue</th><th>Length</th><th></th><th class="credit">Source</th></tr></thead><tbody data-kind="sfx"></tbody></table></section>
+</main>
+<script type="module">
+  const BASE = "assets/audio/";
+  const { cues, sources } = await (await fetch(BASE + "cues.json")).json();
+  let ctx = null;
+  const bus = {}, buffers = {}, playing = {};
+  const level = { music: 0.8, bed: 0.8, sfx: 0.8 };
+
+  function audio() {
+    if (ctx) return ctx;
+    ctx = new AudioContext();
+    for (const k of ["music", "bed", "sfx"]) { bus[k] = new GainNode(ctx, { gain: level[k] }); bus[k].connect(ctx.destination); }
+    return ctx;
+  }
+  const buf = (name) => (buffers[name] ||= fetch(BASE + cues[name].file).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)));
+  const fmt = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : `${s.toFixed(s < 10 ? 2 : 1)} s`);
+
+  function stop(name) {
+    const p = playing[name];
+    if (!p) return;
+    p.stop(); delete playing[name];
+    document.querySelectorAll(`[data-cue="${name}"] button[aria-pressed]`).forEach((b) => b.setAttribute("aria-pressed", "false"));
+  }
+
+  // music: two <audio> elements crossfaded at the seam, as the site does
+  function playMusic(name, { seam = false } = {}) {
+    const c = cues[name], els = [new Audio(BASE + c.file), new Audio(BASE + c.file)];
+    const gains = els.map((e, i) => { const g = new GainNode(ctx, { gain: i ? 0 : 1 }); ctx.createMediaElementSource(e).connect(g).connect(bus.music); return g; });
+    let active = 0, swapping = false, alive = true;
+    const loops = !name.endsWith("-end");
+    els[0].addEventListener("loadedmetadata", () => { if (seam) els[0].currentTime = Math.max(0, els[0].duration - c.xfade - 8); els[0].play(); }, { once: true });
+    const timer = setInterval(() => {
+      const a = els[active];
+      if (!alive || !loops || swapping || !a.duration || a.currentTime < a.duration - c.xfade) return;
+      swapping = true;
+      const i = 1 - active, b = els[i], t = ctx.currentTime + 0.02, n = 64, up = new Float32Array(n), down = new Float32Array(n);
+      for (let k = 0; k < n; k++) { up[k] = Math.sin(k / (n - 1) * Math.PI / 2); down[k] = Math.cos(k / (n - 1) * Math.PI / 2); }
+      b.currentTime = 0; b.play();
+      gains[i].gain.setValueCurveAtTime(up, t, c.xfade); gains[active].gain.setValueCurveAtTime(down, t, c.xfade);
+      const old = active; active = i;
+      setTimeout(() => { els[old].pause(); swapping = false; }, c.xfade * 1000 + 300);
+      status(`${name}: crossfaded the seam`);
+    }, 100);
+    els[0].addEventListener("ended", () => { if (!loops) stop(name); });
+    return { stop() { alive = false; clearInterval(timer); els.forEach((e) => e.pause()); } };
+  }
+
+  async function play(name, { loop = false, seam = false } = {}) {
+    audio(); await ctx.resume();
+    stop(name);
+    const c = cues[name];
+    if (c.kind === "music") { playing[name] = playMusic(name, { seam }); return; }
+    const b = await buf(name), s = new AudioBufferSourceNode(ctx, { buffer: b });
+    if (loop && c.loop) { s.loop = true; [s.loopStart, s.loopEnd] = c.loop; }
+    s.connect(bus[c.kind]);
+    const from = loop && c.loop ? (seam ? Math.max(c.loop[0], c.loop[1] - 3) : c.loop[0]) : 0;
+    s.start(0, from);
+    s.onended = () => { if (playing[name] === handle) stop(name); };
+    const handle = { stop() { try { s.stop(); } catch { /* */ } } };
+    playing[name] = handle;
+  }
+
+  const status = (t) => { document.getElementById("status").textContent = t; };
+
+  for (const [name, c] of Object.entries(cues)) {
+    const tr = document.createElement("tr"); tr.dataset.cue = name;
+    const src = sources[c.credit] || {};
+    const td = (cls, txt) => { const d = document.createElement("td"); d.className = cls; if (txt != null) d.textContent = txt; tr.appendChild(d); return d; };
+    const n = td("name", name);
+    if (c.note) { const s = document.createElement("span"); s.className = "note"; s.textContent = c.note; n.appendChild(s); }
+    td("num", fmt(c.duration) + (c.loop ? `, loops ${fmt(c.loop[1] - c.loop[0])}` : c.kind === "music" && !name.endsWith("-end") ? `, ${c.xfade} s seam` : ""));
+    const acts = td("acts");
+    const btn = (label, fn, pressable = true) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; if (pressable) b.setAttribute("aria-pressed", "false"); b.addEventListener("click", fn); acts.append(b, " "); return b; };
+    const loops = !!c.loop || (c.kind === "music" && !name.endsWith("-end"));
+    const playBtn = btn(loops ? "Loop" : "Play", () => {
+      if (playing[name]) { stop(name); return; }
+      play(name, { loop: loops }); playBtn.setAttribute("aria-pressed", "true"); status(`${name}: playing`);
+    });
+    if (loops) btn("Hear the seam", () => { play(name, { loop: true, seam: true }); playBtn.setAttribute("aria-pressed", "true"); status(`${name}: just before the seam`); }, false);
+    const credit = td("credit");
+    credit.textContent = (src.credit || c.credit) + ". "; // (the credit line already names its licence)
+    if (src.page) { const a = document.createElement("a"); a.href = src.page; a.textContent = "Source"; a.rel = "noopener"; credit.appendChild(a); }
+    document.querySelector(`tbody[data-kind="${c.kind}"]`).appendChild(tr);
+  }
+  document.querySelectorAll("[data-bus]").forEach((r) => r.addEventListener("input", () => {
+    level[r.dataset.bus] = +r.value / 100;
+    if (ctx) bus[r.dataset.bus].gain.setTargetAtTime(level[r.dataset.bus], ctx.currentTime, 0.05);
+  }));
+</script>
+</body>
+</html>
