@@ -53,7 +53,8 @@ def fetch_sky():
         base = {"latitude": LAT, "longitude": LON, "timezone": "auto", "forecast_days": 2}
         aq = _get(AQ_URL, {**base, "current": AQ_VARS, "hourly": "us_aqi,pm2_5,aerosol_optical_depth"})
         wx = _get(WX_URL, {**base, "current": WX_VARS,
-                           "hourly": "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability"})
+                           "hourly": "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability,weather_code",
+                           "daily": "sunrise,sunset,uv_index_max"})
         cur = {**aq["current"], **wx["current"]}
         data = {
             "time": cur.get("time"),
@@ -83,8 +84,12 @@ def fetch_sky():
                 "cloud_cover": wx["hourly"]["cloud_cover"],
                 "wind_dir": wx["hourly"]["wind_direction_10m"],
                 "temperature": wx["hourly"]["temperature_2m"],
-                "precip_prob": wx["hourly"]["precipitation_probability"],
+                "precip_prob": wx["hourly"].get("precipitation_probability"),
+                "weather_code": wx["hourly"].get("weather_code"),
+                "wind_speed": wx["hourly"].get("wind_speed_10m"),
             },
+            "daily": ({"time": wx["daily"]["time"], "sunrise": wx["daily"]["sunrise"], "sunset": wx["daily"]["sunset"],
+                       "uv_max": wx["daily"]["uv_index_max"]} if "daily" in wx else None),  # sunrise/sunset are optional
             "source": "live",
             "fetched_at": now,
             "stale": False,

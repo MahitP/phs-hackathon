@@ -223,3 +223,28 @@ code { font-family: var(--mono); font-size: 0.85em; background: rgba(255,255,255
 .regions button:hover, .regions button.on { color: var(--ink); border-color: var(--ink); }
 @media (max-width: 900px) { .regions { left: 16px; right: 16px; max-width: none; justify-content: flex-start; bottom: auto; top: 96px; }
   .regions .label { display: none; } }
+
+/* universal map control (same on NOW, PHS CAMPUS and 2023 RECORD) */
+.map-ctl { display: flex; flex-direction: column; gap: 4px; }
+.map-ctl button { background: rgba(6,10,18,.85); color: var(--muted); border: 1px solid var(--line); font: inherit; font-size: 10px;
+  letter-spacing: .1em; padding: 7px 10px; cursor: pointer; text-align: left; }
+.map-ctl button:hover, .map-ctl button.on { color: var(--ink); border-color: var(--ink); }
+
+/* forecast: hour-by-hour sky strip */
+.scope.sky { color: #c4b5fd; border: 1px solid rgba(167,139,250,.5); background: rgba(167,139,250,.08); }
+.best { font-size: 1.05rem; line-height: 1.5; margin: 6px 0 12px; }
+.best b { color: var(--best, var(--ink)); }
+.fc-strip { display: flex; gap: 2px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.fc-hour { flex: 0 0 52px; background: rgba(0,0,0,.5); border: 1px solid var(--line); text-align: center; padding: 6px 2px 0; font-size: 0.62rem; }
+.fc-hour.now { border-color: var(--ink); }
+.fc-hour .t { color: var(--muted); }
+.fc-hour .i { font-size: 1.15rem; margin: 3px 0; font-family: var(--sans); }
+.fc-hour .a { font-weight: 600; }
+.fc-hour .r { color: #93c5fd; font-size: 0.56rem; margin: 2px 0 4px; }
+.fc-hour .v { height: 6px; margin: 0 -2px; }
+
+/* EARTH city labels that follow the globe */
+#city-labels { position: fixed; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.city-label { position: absolute; left: 0; top: 0; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: #e2e8f0;
+  text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
+.city-label b { font-weight: 600; }

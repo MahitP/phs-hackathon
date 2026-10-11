@@ -45,7 +45,6 @@ $("btn-initiate").onclick = () => {
   setTimeout(() => { if (activeTab === "now") showScene("now", true); }, 2300); // keep zooming: globe -> city
   gsap.fromTo("#hud .topbar", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.8, delay: 1.6 });
   gsap.fromTo("#tab-now", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.9, delay: 1.9, ease: "power3.out" });
-  refreshHistory();
 };
 $("btn-orbit").onclick = () => {
   $("hud").hidden = true;
@@ -73,13 +72,13 @@ function selectTab(name) {
   selectTab.keepView = false;
   if (name === "replay") loadReplay();
   if (name !== "explore" && explored) { explored = null; Globe.hidePin(); }
-  if (name === "sky") { renderForecast.key = null; renderForecast(latest && latest.sky); refreshHistory(); }
+  if (name === "sky") { renderForecast.key = null; renderForecast(latest && latest.sky); }
   if (name !== "replay" && name !== "explore" && latest) applySky(latest);
 }
 
 // ---------- scenes: close-up map (NOW = city, LOCAL = school) or the 3D globe ----------
 const MAP_VIEWS = { now: "city", local: "school", replay: "nj" }; // everything else shows the globe
-const GLOBE_REGION_TABS = ["sky", "explore"];
+const GLOBE_REGION_TABS = ["explore"]; // region focus + city dots belong to EARTH only
 let sceneIsMap = false;
 function showScene(name, plunge = false) {
   const view = MAP_VIEWS[name];
@@ -107,8 +106,10 @@ function showScene(name, plunge = false) {
     // closer, centred view of a region; default to North America the first time
     if (GLOBE_REGION_TABS.includes(name) && !explored) focusRegion(showScene.region || "44,-98,2.6");
     if (name === "system") Globe.flyTo(Globe.HOME.lat, Globe.HOME.lon, 1.6, 2.4);
+    if (name === "sky") Globe.flyTo(Globe.HOME.lat, Globe.HOME.lon, 1.6, 1.9); // the forecast is for the sky over PHS
   }
   $("regions").hidden = !GLOBE_REGION_TABS.includes(name);
+  Globe.showCities(name === "explore");
 }
 
 // ---------- live render ----------
@@ -174,15 +175,6 @@ function render(s) {
     inside: ind.warming_up ? "WARMING UP" : `STALE ${fmt(ind.stale_index)}/100 ${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"}`,
     aqi: fmt(sky.us_aqi), cat: cat.short || cat.label, catColor: cat.color, weather: `${w.icon} ${fmt(sky.temperature, 0, "°C")}` });
 
-  // sky tab
-  $("ozone").textContent = fmt(sky.ozone, 0, " µg/m³");
-  $("clouds").textContent = fmt(sky.cloud_cover, 0, "%");
-  $("uv").textContent = fmt(sky.uv_index, 1);
-  $("sun-el").textContent = fmt(cl.sun_elevation, 0, "°");
-  $("clear-sky").textContent = fmt(cl.clear_sky_wm2, 0, " W/m²");
-  $("temp").textContent = fmt(sky.temperature, 1, " °C");
-  $("wind-big").textContent = sky.wind_dir == null ? "–" : `${fmt(sky.wind_speed, 0)} km/h from ${s.wind_compass}`;
-  $("wind-arrow").style.transform = `rotate(${((sky.wind_dir ?? 0) + 180) % 360}deg)`;
 
   // status + ticker
   const chip = $("mode-chip");
@@ -198,7 +190,7 @@ function render(s) {
   $("replay-status").textContent = s.replay ? `PLAYING ${s.replay.clock} · ${s.replay.index + 1}/${s.replay.total}` : "";
 
   if ((activeTab !== "replay" || s.replay) && !explored) applySky(s);
-  if (activeTab === "sky") renderForecast(sky);
+  renderForecast(sky);
 }
 
 // EPA guidance for each AQI category (airnow.gov)
@@ -247,53 +239,70 @@ async function poll() {
   try { render(s); } catch (e) { console.error("render failed", e); } // a UI bug must not hide the verdict
 }
 
-// ---------- charts ----------
-// Chart.js comes from a CDN: if it didn't load (no internet), skip the charts instead of stopping this script
-const hasChart = typeof Chart !== "undefined";
-if (hasChart) {
-  Chart.defaults.color = "#8b95a7";
-  Chart.defaults.borderColor = "rgba(255,255,255,0.08)";
-  Chart.defaults.font.family = "JetBrains Mono";
-  Chart.defaults.font.size = 10;
+// ---------- forecast: when can PHS open its windows? (hour by hour, next 24 h) ----------
+function hourVerdict(aqi, pm, aod, rain) {
+  if ((aqi != null && aqi > 100) || (pm != null && pm > 35.4) || (aod != null && aod > 0.7)) return { k: "shut", label: "BAD AIR", color: "#dc2626" };
+  if (rain != null && rain >= 60) return { k: "rain", label: "RAIN", color: "#3b82f6" };
+  if (aqi != null && aqi <= 50 && (rain == null || rain < 40)) return { k: "open", label: "OPEN", color: "#16a34a" };
+  return { k: "either", label: "EITHER", color: "#d97706" };
 }
-let chart, fchart;
-function lineChart(el, datasets, labels) {
-  if (!hasChart) return null;
-  return new Chart(el, {
-    type: "line", data: { labels, datasets },
-    options: { animation: false, responsive: true, interaction: { mode: "index", intersect: false },
-      elements: { point: { radius: 0 }, line: { borderWidth: 1.5 } },
-      plugins: { legend: { labels: { boxWidth: 10, boxHeight: 2 } } }, scales: { x: { ticks: { maxTicksLimit: 6 } } } },
-  });
-}
-async function refreshHistory() {
-  if (!serverMode || activeTab !== "sky") return;
-  const h = await api("api/history?minutes=60").catch(() => []);
-  const labels = h.map((r) => new Date(r.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  const ds = [
-    { label: "ROOM STALE", data: h.map((r) => r.stale_index), borderColor: "#c084fc", tension: 0.3 },
-    { label: "SKY AQI", data: h.map((r) => r.us_aqi), borderColor: "#60a5fa", tension: 0.3 },
-  ];
-  if (!chart) chart = lineChart($("chart"), ds, labels);
-  else { chart.data.labels = labels; chart.data.datasets.forEach((d, i) => (d.data = ds[i].data)); chart.update(); }
-}
-setInterval(refreshHistory, 30000);
-
-function renderForecast(sky) {
-  if (!sky || !sky.forecast) return;
+const hourLabel = (t) => { const h = +t.slice(11, 13); return h === 0 ? "12 AM" : h < 12 ? h + " AM" : h === 12 ? "12 PM" : h - 12 + " PM"; };
+let lastLiveSky = null;
+function renderForecast(skyIn) {
+  if (skyIn && skyIn.source !== "replay" && skyIn.forecast) lastLiveSky = skyIn; // never show 2023 data as a forecast
+  const sky = lastLiveSky;
+  if (!sky) return;
   const f = sky.forecast, nowKey = (sky.time || "").slice(0, 13);
   let i0 = f.time.findIndex((t) => t.slice(0, 13) >= nowKey); if (i0 < 0) i0 = 0;
-  const sl = (a) => a.slice(i0, i0 + 24);
-  const key = sl(f.time).join();
+  const key = f.time[i0] + "|" + sky.fetched_at;
   if (renderForecast.key === key) return;
   renderForecast.key = key;
-  const ds = [
-    { label: "AQI", data: sl(f.us_aqi), borderColor: "#60a5fa", tension: 0.3 },
-    { label: "HAZE (AOD×100)", data: sl(f.aod).map((x) => (x == null ? null : x * 100)), borderColor: "#ff7a2e", tension: 0.3 },
-    { label: "CLOUDS %", data: sl(f.cloud_cover), borderColor: "#94a3b8", borderDash: [3, 3], tension: 0.3 },
-  ];
-  if (fchart) fchart.destroy();
-  fchart = lineChart($("forecast"), ds, sl(f.time).map((t) => t.slice(11, 16)));
+
+  const hours = [];
+  for (let k = i0; k < Math.min(i0 + 24, f.time.length); k++) {
+    const rain = f.precip_prob ? f.precip_prob[k] : null;
+    hours.push({ t: f.time[k], aqi: f.us_aqi[k], pm: f.pm2_5[k], aod: f.aod[k], rain, temp: f.temperature ? f.temperature[k] : null,
+      w: LocalSky.describeWeather(f.weather_code ? f.weather_code[k] : null), v: hourVerdict(f.us_aqi[k], f.pm2_5[k], f.aod[k], rain) });
+  }
+  $("fc-strip").innerHTML = hours.map((h, n) => `
+    <div class="fc-hour${n === 0 ? " now" : ""}" title="${hourLabel(h.t)}: ${h.w.text}, AQI ${h.aqi ?? "–"}, rain ${h.rain ?? "–"}%">
+      <div class="t">${n === 0 ? "NOW" : hourLabel(h.t)}</div>
+      <div class="i">${h.w.icon || "·"}</div>
+      <div>${fmt(h.temp, 0, "°")}</div>
+      <div class="a" style="color:${LocalSky.aqiCategory(h.aqi).color}">${fmt(h.aqi)}</div>
+      <div class="r">${h.rain == null ? "" : h.rain + "%"}</div>
+      <div class="v" style="background:${h.v.color}"></div>
+    </div>`).join("");
+
+  // best time to air out: longest run of OPEN hours in daytime (7 AM - 9 PM)
+  let best = null, run = null;
+  hours.forEach((h, n) => {
+    const day = +h.t.slice(11, 13) >= 7 && +h.t.slice(11, 13) <= 21;
+    if (h.v.k === "open" && day) { run = run || { a: n, b: n }; run.b = n; if (!best || run.b - run.a > best.b - best.a) best = { ...run }; }
+    else run = null;
+  });
+  const el = $("fc-best");
+  if (best) {
+    const seg = hours.slice(best.a, best.b + 1), avg = Math.round(seg.reduce((x, h) => x + h.aqi, 0) / seg.length);
+    const end = hours[best.b + 1] ? hourLabel(hours[best.b + 1].t) : "later";
+    el.style.setProperty("--best", "#22c55e");
+    el.innerHTML = `Best time to open the windows: <b>${best.a === 0 ? "now" : hourLabel(seg[0].t)} – ${end}</b>. Clean air (AQI ≈ ${avg}) and dry.`;
+  } else {
+    const bad = hours.filter((h) => h.v.k === "shut").length, wet = hours.filter((h) => h.v.k === "rain").length;
+    el.style.setProperty("--best", "#f59e0b");
+    el.innerHTML = bad > hours.length / 2 ? `<b>Keep windows shut</b> for most of the next day. The forecast shows unhealthy air over PHS.`
+      : wet > hours.length / 3 ? `<b>Rain is likely</b> for much of the day, so there's no great window to air out.`
+      : `<b>No fully clean window</b> in daylight. The air stays "moderate", so airing out is fine but not ideal.`;
+  }
+
+  const today = sky.daily ? sky.daily.time.indexOf(nowKey.slice(0, 10)) : -1;
+  const tm = (iso) => iso ? new Date(iso + ":00").toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "–";
+  $("fc-rise").textContent = today >= 0 ? tm(sky.daily.sunrise[today]) : "–";
+  $("fc-set").textContent = today >= 0 ? tm(sky.daily.sunset[today]) : "–";
+  $("fc-uv").textContent = today >= 0 ? fmt(sky.daily.uv_max[today], 1) : "–";
+  $("fc-wind").textContent = sky.wind_dir == null ? "–" : `${fmt(sky.wind_speed, 0)} km/h from ${LocalSky.compass(sky.wind_dir)}`;
+  $("fc-haze").textContent = sky.aod == null ? "–" : `${sky.aod.toFixed(2)} ${sky.aod > 0.7 ? "SMOKY" : sky.aod > 0.3 ? "HAZY" : "CLEAR"}`;
+  $("fc-cloud").textContent = fmt(sky.cloud_cover, 0, "%");
 }
 
 // ---------- announce: read the verdict aloud (ElevenLabs on the device, browser voice otherwise) ----------
@@ -444,7 +453,7 @@ LocalMap.onAnalyze(async (lat, lon) => {
   $("local-out").hidden = true;
   localPick = { lat, lon };
   $("local-card").hidden = false;
-  $("l-coords").textContent = `${lat.toFixed(3)}°, ${lon.toFixed(3)}° · ${km < 1 ? "AT PHS" : km.toFixed(1) + " KM " + LocalSky.compass(bearingDeg(plat, plon, lat, lon)) + " OF PHS"}`;
+  $("l-coords").textContent = `${lat.toFixed(3)}°, ${lon.toFixed(3)}° · ${LocalMap.onCampus(lat, lon) ? "ON PHS SCHOOL GROUNDS" : km.toFixed(1) + " KM " + LocalSky.compass(bearingDeg(plat, plon, lat, lon)) + " OF PHS"}`;
   $("l-place").textContent = "Reading the air…";
   $("l-around").textContent = "Scanning OpenStreetMap for roads, parks and industry nearby (can take ~10 s)…";
   $("l-fire").textContent = "…";
@@ -498,15 +507,6 @@ LocalMap.onAnalyze(async (lat, lon) => {
     gsap.fromTo("#local-card", { opacity: 0.4 }, { opacity: 1, duration: 0.4 });
   } catch (e) { $("l-place").textContent = "Couldn't read this spot (" + e.message + ")"; }
 });
-document.querySelectorAll("[data-layer]").forEach((b) => (b.onclick = () => {
-  b.classList.toggle("on");
-  LocalMap.toggle(b.dataset.layer, b.classList.contains("on"));
-}));
-document.querySelectorAll("[data-base]").forEach((b) => (b.onclick = () => {
-  document.querySelectorAll("[data-base]").forEach((x) => x.classList.toggle("on", x === b));
-  LocalMap.setBase(b.dataset.base);
-}));
-document.querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => LocalMap.view(b.dataset.view)));
 
 async function loadFires() {
   if (!serverMode) {
