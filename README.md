@@ -50,17 +50,16 @@ Verdict thresholds have hysteresis (for example, KEEP IT SHUT starts above AQI 1
 
 Scroll snaps to each hero pose. Sound is generated in the browser and follows the real wind. Rendering uses a post-processing chain chosen per device: ambient occlusion, god rays, depth of field, bloom, filmic tone mapping, anti-aliasing and film grain. `scripts/fetch_story_assets.sh` re-downloads and compresses the imagery, star catalogue and classroom models. The story adapts to the device (lighter effects on phones and slower GPUs), respects reduced-motion settings, and becomes a plain text article if WebGL isn't available. `scripts/bake_story_data.py` re-creates the map and smoke data files.
 
-**The live dashboard** is drawn as a classroom sash window, in one typeface (Archivo, bundled in `web/vendor/fonts/`):
+**The live dashboard** (`app.html`, reached through the dive from the story):
 
-- **The panes** show what is outside. On the Now view that is the sky over PHS, rendered from live data: the sun's real position, aerosol optical depth, cloud cover and time of day. A clean noon comes out blue, haze washes it pale, wildfire smoke turns it orange, night is dark.
-- **The meeting rail** holds the verdict as one short sentence ("Open the window.", "Either way.", "Keep it shut.", "Ventilate now.") with the reason and a **Read it aloud** button. The word gets wider for open and narrower for shut, letter by letter.
-- **The lower sash** rises with the verdict: half open with wind streaks for open, just ajar for either way, sealed for shut, all the way up for ventilate.
-- **The sill** carries three readouts, and **two rulers** do the navigation, because distance and time really are scales:
-  - Distance: **Window** (PHS right now), **Campus 25 km** (the Leaflet map of the school seen through the panes, with the Raspberry Pi's live inside reading, NASA fires, the model AQI grid and wind; click any spot for its air and weather), **Earth** (the 3D globe with city dots in EPA colors; tap anywhere for a side-by-side comparison with PHS).
-  - Time: **June 7, 2023** (the recorded smoke day, hour by hour, clearly labeled as historical, with a button to replay it on the device), **Now**, **Next 24 hours** (three forecast skies, the AQI/haze/cloud chart, wind, sunrise and sunset).
-- **How it works** (in the head rail) explains the sensors, the physics and the verdict rules.
+1. **Now:** after the flight from space, the globe hands off to a close **satellite view of Princeton** with the SkyWindow device marker at PHS. The panel shows the verdict, outside (sky) vs inside (classroom) readings, current weather at PHS (conditions, temperature/feels-like, humidity, wind/gusts, rain), recent fires, and the 🔊 Announce button.
+2. **PHS Campus** (local, within 25 km): zooms in on **Princeton High School** itself. You get the Raspberry Pi's live inside-the-school readings (stale index, trend, raw air sensor, light at the window, device status) next to the outside air and weather. The device marker on the map carries the same live card. The dashed green outline is the official PHS school grounds (OpenStreetMap). Only clicks inside it count as "on PHS school grounds". Click anywhere within 25 km for that spot's air and weather.
 
-Below the window, each view has its full readings: outside vs inside, weather at PHS, NASA fire detections, and Setup and sensor training (calibration and labeling, device only). Generated wind audio follows the real wind speed; it starts with the **Sound off/on** button. The page loads straight into the Now view with skeletons until the first reading, works at phone width, respects reduced motion, and links straight to a view with `app.html#campus`, `#earth`, `#forecast`, `#2023` or `#how`.
+**Map controls:** every map view has the same small control in the corner: recenter, satellite/map and NASA fires.
+3. **Forecast — "When can PHS open its windows?"** An hour-by-hour strip for the next 24 hours: weather icon, temperature, AQI, rain chance and a window verdict per hour (open, either, shut for bad air, shut for rain). It also highlights the best daytime window to air out and shows sunrise, sunset, max UV, wind and haze. Hourly rules: shut if the forecast AQI is over 100, PM2.5 is over 35 or there's heavy haze; shut if rain is 60%+ likely; open if AQI is 50 or less and it's dry.
+4. **Earth** (global context): city dots on the 3D globe in EPA colors, a breakdown of how many of 43 cities are Good, Moderate, Unhealthy and so on, the median AQI, and region jumps. Tap anywhere for a **side-by-side comparison with PHS** (AQI, PM2.5, haze, weather, temperature, humidity, wind, local time). Earth never shows the classroom sensor or a windows verdict. Those belong to PHS Campus, and clicks more than 25 km from PHS on the campus map are sent to Earth.
+5. **2023 Record:** the real recorded atmosphere of June 7, 2023 (Canadian wildfire smoke over NJ), clearly labeled as historical. The map is locked to **New Jersey only**: everything outside the state border (OpenStreetMap) is masked, and the smoke layer follows each hour's recorded haze.
+6. **System:** how SkyWindow works.
 
 **Real alerts:**
 - A red banner appears if the air over PHS is actually unhealthy (AQI > 100). It shows the EPA category, the likely cause and the EPA's health guidance.
@@ -73,6 +72,23 @@ The site runs in one of two modes:
 
 - **Device mode:** served by the Pi at `http://<pi-ip>:8000/app.html`, using its live sensors.
 - **Showcase mode:** opened anywhere without the Pi. For example, serve `web/` from any static host, or run `python -m http.server -d web`. The page fetches the sky straight from Open-Meteo and simulates the room sensor, so judges can try it on their own phones.
+
+## Raspberry Pi backend + backup backend (kept separate)
+
+| | **Pi backend** — `server/`, `device/` (port 8000) | **Backup backend** — `simulator/` (port 8001) |
+|---|---|---|
+| Indoor air | The Pi's Grove sensors **only** | Scenario-driven classroom (`simulator/scenarios.py`) |
+| If a sensor fails | Shows **SENSOR OFFLINE** and decides on outside air only. It never substitutes made-up numbers, and it reconnects automatically | n/a |
+| Outside air, weather, NASA fires | Real | The same real data, unless the chosen scenario overrides it |
+| LCD / GPIO | Real | Never touched |
+| Database | `data/skywindow.db` (real readings only) | `data/sim.db` |
+| Scenario controls | None | Operator page at `/sim` |
+| Dashboard label for the room reading | RASPBERRY PI / LIVE (or SENSOR OFFLINE) | BACKUP FEED |
+
+- **Separation:** the Pi backend never imports anything from `simulator/` (a test enforces this). The backup runs as its own process and wraps its *own* copy of the server code, so nothing it does can reach the Pi backend's readings, verdict or database.
+- **Mock readings:** these only exist when `SKYWINDOW_MOCK=1` is set explicitly. `scripts/dev.py` sets it for laptop development, and the dashboard then says DEV MODE.
+- **Scenarios** (picked at `http://<pi>:8001/sim`): normal classroom · clean day + stuffy room → OPEN · chemical spike → VENTILATE · smoke outside → SHUT · fire upwind → EITHER + Fire Watch · sensor warm-up.
+- **Running it:** `setup_pi.sh` installs both services. On a laptop, run `python scripts/dev.py` (8000) and `python scripts/sim.py` (8001).
 
 ## Hardware
 

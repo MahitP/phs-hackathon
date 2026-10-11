@@ -5,8 +5,8 @@ Grove Base HAT (STM32 ADC over I2C) on a Raspberry Pi:
   - Grove Light Sensor            -> analog port A2
 
 grove.py's ADC.read(channel) returns a 0-1000 "per mille" value.
-If grove.py isn't installed (e.g. on a laptop) or SKYWINDOW_MOCK=1, a simulator
-is used instead so the rest of the stack can be developed without hardware.
+With SKYWINDOW_MOCK=1 (laptop development only) a mock is used instead. Without it, the real
+sensors are used, and if they can't be read the readings are None ("sensor offline") - never fake.
 
 Run directly to print live readings:  python device/hw.py
 """
@@ -81,14 +81,60 @@ class MockSensors:
         return False
 
 
+class PiSensors:
+    """The Raspberry Pi's real sensors, and nothing else. If the Grove HAT/driver is missing or a read
+    fails (e.g. a cable comes loose), readings are None and `offline` is True: we never substitute
+    made-up numbers for Pi data. It keeps retrying, so the sensor comes back by itself once fixed."""
+
+    mock = False
+
+    def __init__(self):
+        self._dev, self.error, self._retry_at, self.started = None, None, 0.0, time.time()
+        self._connect()
+
+    def _connect(self):
+        if time.time() < self._retry_at:
+            return
+        try:
+            self._dev = GroveSensors()
+            self.error, self.started = None, time.time()
+            print("[hw] Grove sensors connected")
+        except Exception as exc:  # ImportError (no grove.py), OSError (no HAT on I2C)
+            self._dev, self.error, self._retry_at = None, f"{type(exc).__name__}: {exc}", time.time() + 30
+            print(f"[hw] sensors offline: {self.error} (retrying every 30 s)")
+
+    def _read(self, fn):
+        if self._dev is None:
+            self._connect()
+        if self._dev is None:
+            return None
+        try:
+            return fn(self._dev)
+        except Exception as exc:
+            self._dev, self.error, self._retry_at = None, f"{type(exc).__name__}: {exc}", time.time() + 5
+            print(f"[hw] sensor read failed: {self.error}")
+            return None
+
+    @property
+    def offline(self):
+        return self._dev is None
+
+    def read_air(self):
+        return self._read(lambda d: d.read_air())
+
+    def read_light(self):
+        return self._read(lambda d: d.read_light())
+
+    def warming_up(self):
+        return self._dev is not None and self._dev.warming_up()
+
+
 def get_sensors():
+    """Mock readings ONLY when explicitly asked for (SKYWINDOW_MOCK=1, e.g. scripts/dev.py on a laptop).
+    On the Pi this is always the real sensors - or 'offline', never fake data."""
     if os.environ.get("SKYWINDOW_MOCK") == "1":
         return MockSensors()
-    try:
-        return GroveSensors()
-    except Exception as exc:  # ImportError on laptops, OSError if HAT missing
-        print(f"[hw] grove.py unavailable ({exc!r}); using MOCK sensors")
-        return MockSensors()
+    return PiSensors()
 
 
 class Smoother:
@@ -137,6 +183,10 @@ if __name__ == "__main__":
     s = get_sensors()
     print(f"mock={s.mock}  air=A{AIR_CHANNEL}  light=A{LIGHT_CHANNEL}  (Ctrl+C to stop)")
     while True:
-        tag = " (warming up)" if s.warming_up() else ""
-        print(f"air={s.read_air():7.1f}   light={s.read_light():7.1f}{tag}")
+        air, light = s.read_air(), s.read_light()
+        if air is None:
+            print(f"SENSOR OFFLINE: {getattr(s, 'error', '?')}")
+        else:
+            tag = " (warming up)" if s.warming_up() else ""
+            print(f"air={air:7.1f}   light={(light if light is not None else float('nan')):7.1f}{tag}")
         time.sleep(1)

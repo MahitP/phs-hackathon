@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyWindow Scenarios</title>
+  <style>
+    :root { --bg: #05070c; --ink: #e2e8f0; --muted: #8b95a7; --line: rgba(255,255,255,.14); --on: #c084fc; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; padding: 24px 16px; }
+    main { max-width: 640px; margin: 0 auto; }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p { color: var(--muted); margin: 0 0 16px; }
+    button { display: block; width: 100%; text-align: left; background: transparent; color: var(--ink); border: 1px solid var(--line);
+      padding: 12px 14px; margin-bottom: 8px; font: inherit; cursor: pointer; }
+    button b { display: block; }
+    button span { color: var(--muted); font-size: .85rem; }
+    button.on { border-color: var(--on); background: rgba(192,132,252,.1); }
+    a { color: var(--on); }
+    #now { font-family: ui-monospace, monospace; font-size: .85rem; color: var(--muted); margin: 12px 0 18px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SkyWindow scenarios</h1>
+  <p>Operator page for the backup backend on this port. The Raspberry Pi backend is not affected.
+     <a href="/">Open the dashboard</a></p>
+  <div id="now">Loading…</div>
+  <div id="list"></div>
+</main>
+<script>
+  const token = new URLSearchParams(location.search).get("token") || (() => { try { return localStorage.getItem("skywindow-token"); } catch (e) { return null; } })();
+  async function load() {
+    const info = await fetch("/api/sim").then((r) => r.json());
+    const st = await fetch("/api/now").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    document.getElementById("now").textContent = "Active: " + info.label + (st ? " · verdict now: " + st.verdict.label : "");
+    document.getElementById("list").innerHTML = info.scenarios.map((s) =>
+      `<button data-k="${s.key}" class="${s.key === info.scenario ? "on" : ""}"><b>${s.label}</b><span>${s.about}</span></button>`).join("");
+    document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = async () => {
+      await fetch("/api/sim", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "X-SkyWindow-Token": token } : {}) },
+        body: JSON.stringify({ scenario: b.dataset.k }) });
+      setTimeout(load, 1500);
+    }));
+  }
+  load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

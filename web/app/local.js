@@ -47,7 +47,7 @@ const LocalMap = (() => {
     deviceMarker.setTooltipContent(
       `<div class="dt-title">SKYWINDOW · PHS</div>` +
       `<div class="dt-verdict" style="color:${d.color}">${d.verdict}</div>` +
-      `<div class="dt-row"><span>${d.insideLabel || "INSIDE " + (d.mock ? "(SIMULATED)" : "(RASPBERRY PI)")}</span><b>${d.inside}</b></div>` +
+      `<div class="dt-row"><span>${d.insideLabel || "INSIDE " + (d.mock ? "(DEV MODE)" : "(RASPBERRY PI)")}</span><b>${d.inside}</b></div>` +
       `<div class="dt-row"><span>OUTSIDE AQI</span><b style="color:${d.catColor}">${d.aqi} ${d.cat}</b></div>` +
       `<div class="dt-row"><span>WEATHER</span><b>${d.weather}</b></div>`);
   }
