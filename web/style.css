@@ -249,12 +249,3 @@ code { font-family: var(--mono); font-size: 0.85em; background: rgba(255,255,255
   text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
 .city-label b { font-weight: 600; }
 
-/* simulator backend */
-.chip.sim { border-color: #c084fc; color: #e9d5ff; }
-.sim-panel { border: 1px dashed rgba(192,132,252,.6); background: rgba(147,51,234,.08); padding: 10px 12px; margin-bottom: 14px; }
-.sim-panel .label { color: #d8b4fe; }
-.sim-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.sim-buttons button { background: transparent; border: 1px solid var(--line); color: var(--muted); font-family: var(--mono); font-size: 0.64rem;
-  letter-spacing: .08em; padding: 7px 10px; cursor: pointer; }
-.sim-buttons button.on, .sim-buttons button:hover { color: var(--ink); border-color: #c084fc; background: rgba(192,132,252,.12); }
-#peer-link { text-decoration: none; }

@@ -247,13 +247,8 @@ const LocalSky = (() => {
 
   async function state() {
     await fetchSky();
-    // simulated room: slow stale build-up, spikes on demand
-    const now = Date.now(), dt = (now - lastT) / 1000; lastT = now;
-    stale = Math.min(60, stale + dt * 0.01);
-    let idx = stale;
-    if (now < spikeUntil) idx += 80 * Math.sin(Math.PI * Math.min(1, (spikeUntil - now) / 20000));
-    idx = Math.round(Math.max(0, Math.min(100, idx)));
-    const rate = (idx - lastIdx) / Math.max(dt / 60, 1e-3); lastIdx = idx;
+    // no SkyWindow device here, so there is no room reading at all: the verdict uses outside air only
+    const now = Date.now();
 
     let s = sky, info = null, when = new Date();
     if (replay) {
@@ -269,8 +264,12 @@ const LocalSky = (() => {
         when = new Date(h.time + ":00-04:00");
       }
     }
-    return { verdict: decide(idx, rate, s), sky: s, clarity: clarity(s, when), replay: info, event: null, mock: true,
-      indoor: { air: null, light: null, baseline: null, rate_per_min: Math.round(rate), stale_index: idx, warming_up: false },
+    const verdict = decide(0, 0, s);
+    verdict.reasons = verdict.reasons.filter((r) => !r.startsWith("indoor") && !r.startsWith("both sides"));
+    verdict.reasons.push("no SkyWindow device connected - deciding on outside air only");
+    verdict.stale_index = null;
+    return { verdict, sky: s, clarity: clarity(s, when), replay: info, event: null, mock: false,
+      indoor: { air: null, light: null, baseline: null, rate_per_min: 0, stale_index: null, warming_up: false, no_device: true },
       wind_compass: compass(s.wind_dir), sky_age_min: Math.round((now - fetchedAt) / 6000) / 10, voice_enabled: false,
       last_report: null, showcase: true };
   }

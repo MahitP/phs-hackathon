@@ -34,14 +34,13 @@ Wants=network-online.target
 [Service]
 User=$USER
 WorkingDirectory=$PWD
-Environment=SKYWINDOW_PEER_PORT=8001
 ExecStart=$PWD/.venv/bin/uvicorn server.app:app --host 0.0.0.0 --port 8000
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
-echo "== simulator service (same real sky, simulated sensors, own database; never touches hardware) =="
+echo "== backup backend on :8001 (simulator/: separate process + database, never touches the Pi sensors) =="
 sudo tee /etc/systemd/system/skywindow-sim.service >/dev/null <<EOF
 [Unit]
 Description=SkyWindow simulator
@@ -51,9 +50,7 @@ Wants=network-online.target
 [Service]
 User=$USER
 WorkingDirectory=$PWD
-Environment=SKYWINDOW_SIM=1
-Environment=SKYWINDOW_PEER_PORT=8000
-ExecStart=$PWD/.venv/bin/uvicorn server.app:app --host 0.0.0.0 --port 8001
+ExecStart=$PWD/.venv/bin/uvicorn simulator.app:app --host 0.0.0.0 --port 8001
 Restart=always
 
 [Install]
@@ -63,5 +60,5 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now skywindow skywindow-sim
 IP=$(hostname -I | awk '{print $1}')
 echo
-echo "Done. Live device: http://$IP:8000   Simulator: http://$IP:8001"
+echo "Done. Pi backend: http://$IP:8000   Backup: http://$IP:8001 (scenarios: http://$IP:8001/sim)"
 echo "Logs: journalctl -u skywindow -f   /   journalctl -u skywindow-sim -f"

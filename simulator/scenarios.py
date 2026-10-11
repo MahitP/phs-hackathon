@@ -1,22 +1,14 @@
-"""SkyWindow SIMULATOR: a second backend that runs next to the live device.
+"""Scenarios for the SkyWindow simulator (a separate backend: see simulator/app.py).
 
-Started with SKYWINDOW_SIM=1 (normally on port 8001, see scripts/sim.py and setup_pi.sh). It runs the
-exact same server code as the live device, but:
-  - the indoor sensors are simulated (it never touches the Grove ADC, the LCD or any GPIO),
-  - it keeps its own database (data/sim.db), so simulated readings never mix with real ones,
-  - outside air, weather and NASA fires are the same REAL data as the live device, unless the chosen
-    scenario deliberately overrides them (e.g. "smoke outside"). Overridden values are flagged.
-
-That makes every verdict demonstrable on demand even if a sensor, cable or the LCD fails, and it is
-always labelled SIMULATOR on the dashboard so it is never mistaken for real readings.
+Nothing in server/ or device/ imports this file. The simulator runs as its own process with its own
+database, so simulated values can never reach the Raspberry Pi backend or its stored readings.
+Outside air, weather and NASA fires in the simulator are the same real data, unless a scenario
+deliberately overrides them.
 """
 import math
-import os
 import random
 import threading
 import time
-
-ENABLED = os.environ.get("SKYWINDOW_SIM") == "1"
 
 # scenarios that set their own sky also set their own fire situation, so they always show what they promise
 NO_FIRES = {"available": True, "source": "SIMULATED (no fires in this scenario)", "within_50km": 0, "within_100km": 0,
@@ -83,8 +75,8 @@ def scenario():
 
 
 def consume_change():
-    """True once after each scenario switch: the server resets its smoothing so the jump to the new
-    room level isn't mistaken for a sudden spike (the 'spike' scenario rises on its own)."""
+    """True once after each scenario switch, so the jump to the new room level can skip the server's
+    smoothing and isn't mistaken for a sudden spike (the 'spike' scenario rises on its own)."""
     with _lock:
         changed, _active["changed"] = _active["changed"], False
     return changed
@@ -114,10 +106,12 @@ def apply_fires(fire_info):
 class SimSensors:
     """Simulated Grove air + light sensors following the active scenario. Never touches hardware."""
 
-    mock = True  # also enables the dashboard's mock buttons
-    sim = True
+    mock = True  # dashboard shows "dev mode" for the room sensor and its mock buttons work
+    offline = False
+    error = None
 
-    def __init__(self):
+    def __init__(self, on_switch=None):
+        self.on_switch = on_switch  # called inside the sensor loop after a scenario change
         self.started = time.time()
         self.spike_until = 0.0
         self.cover_until = 0.0
@@ -130,6 +124,8 @@ class SimSensors:
         self.cover_until = time.time() + seconds
 
     def read_air(self):
+        if consume_change() and self.on_switch:
+            self.on_switch()  # runs in the sensor thread, so it's safe to reset the loop's smoothing
         now = time.time()
         t = now - _active["since"]
         profile = scenario()["indoor"]

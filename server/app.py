@@ -17,10 +17,6 @@ from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")  # before modules that read env vars
-if os.environ.get("SKYWINDOW_SIM") == "1":
-    # SIMULATOR backend: never touch the real sensors/LCD and never write into the live device's database
-    os.environ["SKYWINDOW_MOCK"] = "1"
-    os.environ.setdefault("SKYWINDOW_DB", str(Path(__file__).resolve().parents[1] / "data" / "sim.db"))
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.responses import FileResponse
@@ -29,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from device.hw import RollingMin, Smoother, get_sensors
 from device.lcd import get_lcd
 from ml.features import N_FEATURES, features
-from server import clarity, fires as firewatch, report, sim, sky as skydata, store, voice
+from server import clarity, fires as firewatch, report, sky as skydata, store, voice
 from server.decide import decide
 from server.replay import Replay
 from server.sky import LAT, LON, compass
@@ -43,8 +39,7 @@ ANNOUNCE_MIN_GAP = 120  # seconds between automatic announcements (each one cost
 REPORT_COOLDOWN = 15  # seconds a report is reused for repeat requests while the verdict is unchanged
 MOCK_ACTIONS = ("spike", "cover")
 
-sensors = sim.SimSensors() if sim.ENABLED else get_sensors()
-PEER_PORT = os.environ.get("SKYWINDOW_PEER_PORT")  # port of the other backend (live <-> simulator), for the switch link
+sensors = get_sensors()
 lcd = get_lcd()
 replay = Replay()
 air_smooth, light_smooth = Smoother(0.3), Smoother(0.3)
@@ -99,41 +94,49 @@ def sensor_loop():
     while True:
         try:
             now = time.time()
-            if sim.ENABLED and sim.consume_change():
-                air_smooth.value = None  # jump straight to the new scenario's room level
-                air_window.clear()
-            air = air_smooth.update(sensors.read_air())
-            light = light_smooth.update(sensors.read_light())
-            rate = rate_per_min(now, air)
-            warming = sensors.warming_up()
-
-            if not warming:
-                air_baseline.update(air, now)  # POST /api/calibrate to reset
+            raw_air, raw_light = sensors.read_air(), sensors.read_light()
+            offline = raw_air is None  # Pi sensor unreadable: show nothing rather than invent indoor data
             baseline = air_baseline.value
+            if offline:
+                air_smooth.value = None
+                air_window.clear()
+                air, rate, warming = None, 0.0, False
+            else:
+                air = air_smooth.update(raw_air)
+                rate = rate_per_min(now, air)
+                warming = sensors.warming_up()
+                if not warming:
+                    air_baseline.update(air, now)  # POST /api/calibrate to reset
+                baseline = air_baseline.value
+            light = light_smooth.update(raw_light) if raw_light is not None else None
             if baseline is not None and baseline != saved_baseline:
                 saved_baseline = baseline
                 store.set_setting("air_baseline", baseline)
 
             replay_sky, replay_info = replay.current()
             sky = replay_sky or skydata.latest()  # never blocks on the network
-            if sim.ENABLED and not replay_info:
-                sky = sim.apply_sky(sky)  # real data unless the scenario overrides it
             when = None
             if replay_info:  # sun position for the replayed hour (EDT = UTC-4)
                 when = datetime.fromisoformat(sky["time"]).replace(tzinfo=timezone.utc) + timedelta(hours=4)
-            light_k = None if replay_info else store.get_setting("light_k")  # live sensor != 2023 sky
-            clar = clarity.compute(LAT, LON, sky, light, light_k, when)
+            light_k = None if replay_info or light is None else store.get_setting("light_k")  # live sensor != 2023 sky
+            clar = clarity.compute(LAT, LON, sky, light or 0.0, light_k, when)
             if replay_info:
                 # ERA5 sunlight for June 7 2023 barely drops under the smoke (86-96% "clear" at midday),
                 # so it would contradict the orange sky; the dashboard shows haze transmission instead.
                 clar["model_clarity"] = None
             fire_info = None if replay_info else firewatch.summarize(firewatch._cache["fires"], (sky or {}).get("wind_dir"))
-            if sim.ENABLED and not replay_info:
-                fire_info = sim.apply_fires(fire_info)
-            verdict = decide(air, baseline, rate, sky, warming, fires=fire_info, prev=state["verdict"])
+            if offline:
+                # outside air only: an indoor reading equal to the baseline adds nothing to the decision
+                ref = baseline if baseline is not None else 0.0
+                verdict = decide(ref, ref, 0.0, sky, False, fires=fire_info, prev=state["verdict"])
+                verdict["reasons"] = [verdict["reasons"][0], "indoor sensor offline (Raspberry Pi) - deciding on outside air only"] + [
+                    r for r in verdict["reasons"][2:] if not r.startswith(("inside and outside", "your room", "both sides"))]
+                verdict["stale_index"] = None
+            else:
+                verdict = decide(air, baseline, rate, sky, warming, fires=fire_info, prev=state["verdict"])
 
             event = None
-            if model is not None and not warming:
+            if model is not None and not warming and not offline:
                 try:
                     sun = clar["sun_elevation"] if not replay_info else clarity.solar_elevation(LAT, LON)
                     event = str(model.predict([features(air, baseline, rate, light, sun)])[0])
@@ -147,21 +150,21 @@ def sensor_loop():
                 line2 = ("REPLAY " + replay_info["clock"]) if replay_info else verdict["lcd2"]
             else:
                 aqi = (sky or {}).get("us_aqi")
-                line2 = f"SkyAQI{str(aqi if aqi is not None else '?'):>4} In{verdict['stale_index']:>3}"  # 16 chars
+                line2 = ("SENSOR OFFLINE" if offline else
+                         f"SkyAQI{str(aqi if aqi is not None else '?'):>4} In{verdict['stale_index']:>3}")  # 16 chars
             lcd.show(verdict["lcd1"], line2, verdict["rgb"])
 
             state.update({
                 "time": now, "verdict": verdict, "sky": sky, "clarity": clar, "replay": replay_info,
                 "event": event, "mock": sensors.mock, "fires": fire_info,
-                "sim": sim.info() if sim.ENABLED else None, "peer_port": PEER_PORT,
-                "indoor": {"air": round(air, 1), "light": round(light, 1), "baseline": baseline,
-                           "rate_per_min": round(rate, 1), "stale_index": verdict["stale_index"],
-                           "warming_up": warming},
+                "indoor": {"air": None if offline else round(air, 1), "light": None if light is None else round(light, 1),
+                           "baseline": baseline, "rate_per_min": round(rate, 1), "stale_index": verdict["stale_index"],
+                           "warming_up": warming, "offline": offline, "error": getattr(sensors, "error", None)},
                 "wind_compass": compass((sky or {}).get("wind_dir")),
                 "sky_age_min": None if not sky or replay_info else round((now - sky["fetched_at"]) / 60, 1),
             })
 
-            if not replay_info and now - last_log > LOG_EVERY:
+            if not replay_info and not offline and now - last_log > LOG_EVERY:  # only real Pi readings are stored
                 last_log = now
                 store.log_reading({"air": air, "light": light, "stale_index": verdict["stale_index"],
                                    "rate": rate, "us_aqi": (sky or {}).get("us_aqi"),
@@ -294,27 +297,11 @@ def api_label(payload: dict = Body(...)):
     if not isinstance(label, str) or not 0 < len(label.strip()) <= 32:
         raise HTTPException(400, "label must be a non-empty string of at most 32 characters")
     ind = state.get("indoor") or {}
+    if ind.get("air") is None:
+        raise HTTPException(503, "no sensor reading right now (Pi sensor offline) - nothing to label")
     store.log_label(label.strip(), ind.get("air"), ind.get("baseline"), ind.get("rate_per_min"),
                     ind.get("light"))
     return {"ok": True}
-
-
-@app.get("/api/sim")
-def api_sim():
-    if not sim.ENABLED:
-        raise HTTPException(404, "this is the live device; the simulator runs as a separate backend (SKYWINDOW_SIM=1)")
-    return sim.info()
-
-
-@app.post("/api/sim", dependencies=writes)
-def api_sim_set(payload: dict = Body(...)):
-    if not sim.ENABLED:
-        raise HTTPException(404, "this is the live device; scenarios only exist on the simulator")
-    try:
-        sim.set_scenario(payload.get("scenario"))
-    except KeyError:
-        raise HTTPException(400, f"unknown scenario; use one of {', '.join(sim.SCENARIOS)}")
-    return sim.info()
 
 
 @app.post("/api/mock/{action}", dependencies=writes)

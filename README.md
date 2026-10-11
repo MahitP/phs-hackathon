@@ -56,26 +56,21 @@ The site runs in one of two modes:
 - **Device mode:** served by the Pi at `http://<pi-ip>:8000`, using its live sensors.
 - **Showcase mode:** opened anywhere without the Pi. For example, serve `web/` from any static host, or run `python -m http.server -d web`. The page fetches the sky straight from Open-Meteo and simulates the room sensor, so judges can try it on their own phones.
 
-## Live device + simulator (two backends at once)
+## Raspberry Pi backend + backup backend (kept separate)
 
-The same server code runs twice on the Pi:
-
-| | Live device (`:8000`) | Simulator (`:8001`) |
+| | **Pi backend** — `server/`, `device/` (port 8000) | **Backup backend** — `simulator/` (port 8001) |
 |---|---|---|
-| Indoor air | Real Grove sensors | Simulated classroom (`server/sim.py`) |
-| Outside air, weather, NASA fires | Real | The same real data, unless a scenario overrides it (flagged on screen) |
+| Indoor air | The Pi's Grove sensors **only** | Scenario-driven classroom (`simulator/scenarios.py`) |
+| If a sensor fails | Shows **SENSOR OFFLINE** and decides on outside air only. It never substitutes made-up numbers, and it reconnects automatically | n/a |
+| Outside air, weather, NASA fires | Real | The same real data, unless the chosen scenario overrides it |
 | LCD / GPIO | Real | Never touched |
-| Database | `data/skywindow.db` | `data/sim.db` |
+| Database | `data/skywindow.db` (real readings only) | `data/sim.db` |
+| Scenario controls | None | Operator page at `/sim` |
 
-Simulator scenarios (pick them on the NOW tab):
-- **Normal classroom, real sky**
-- **Clean day, stuffy room** → OPEN
-- **Chemical spike indoors** → VENTILATE
-- **Wildfire smoke outside** → SHUT + alert
-- **Fire upwind, air still clean** → EITHER + Fire Watch
-- **Sensor warming up**
-
-Both dashboards link to each other (**SIMULATOR ↗ / LIVE DEVICE ↗**), and everything from the simulator is labeled 🧪 SIMULATOR, so the demo never depends on a cable behaving. `setup_pi.sh` installs both as services. On a laptop, run `python scripts/dev.py` (8000) and `python scripts/sim.py` (8001). Tests: `tests/test_sim.py`.
+- **Separation:** the Pi backend never imports anything from `simulator/` (a test enforces this). The backup runs as its own process and wraps its *own* copy of the server code, so nothing it does can reach the Pi backend's readings, verdict or database.
+- **Mock readings:** these only exist when `SKYWINDOW_MOCK=1` is set explicitly. `scripts/dev.py` sets it for laptop development, and the dashboard then says DEV MODE.
+- **Scenarios** (picked at `http://<pi>:8001/sim`): normal classroom · clean day + stuffy room → OPEN · chemical spike → VENTILATE · smoke outside → SHUT · fire upwind → EITHER + Fire Watch · sensor warm-up.
+- **Running it:** `setup_pi.sh` installs both services. On a laptop, run `python scripts/dev.py` (8000) and `python scripts/sim.py` (8001).
 
 ## Hardware
 

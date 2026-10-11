@@ -142,8 +142,9 @@ function render(s) {
   $("wind-text").textContent = sky.wind_dir == null ? "–" : `${fmt(sky.wind_speed, 0)} KM/H ${s.wind_compass}`;
   $("stale").textContent = ind.warming_up ? "…" : fmt(ind.stale_index);
   $("stale-bar").style.width = (ind.stale_index || 0) + "%";
-  $("rate").textContent = `${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"} ${fmt(Math.abs(ind.rate_per_min || 0), 0)}/MIN`;
-  $("air").textContent = ind.air == null ? "SIMULATED" : `${fmt(ind.air, 0)} / BASE ${fmt(ind.baseline, 0)}`;
+  $("rate").textContent = ind.stale_index == null ? "–" : `${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"} ${fmt(Math.abs(ind.rate_per_min || 0), 0)}/MIN`;
+  const noIndoor = ind.offline ? "SENSOR OFFLINE" : ind.no_device ? "NO DEVICE" : null;
+  $("air").textContent = noIndoor || `${fmt(ind.air, 0)} / BASE ${fmt(ind.baseline, 0)}`;
   // During replay the server drops model_clarity (2023 model sunlight ignores the smoke) -> show haze instead
   const [clar, src] = cl.sensor_clarity != null ? [cl.sensor_clarity, "SENSOR"]
     : cl.model_clarity != null ? [cl.model_clarity, "MODEL"] : [cl.haze_transmission, "THROUGH HAZE"];
@@ -159,30 +160,28 @@ function render(s) {
   renderFireLine(s.fires);
 
   // LOCAL: the Raspberry Pi inside the school vs the air outside
-  $("pi-label").textContent = s.sim ? "INSIDE · SIMULATOR" : s.mock ? "INSIDE · SIMULATED SENSOR" : "INSIDE · RASPBERRY PI";
-  $("local-scope").textContent = s.sim ? "SIMULATOR BACKEND" : !serverMode ? "NO DEVICE (SHOWCASE)" : s.mock ? "ROOM SENSOR SIMULATED" : "ROOM SENSOR LIVE";
+  $("pi-label").textContent = s.mock ? "INSIDE · DEV MODE" : "INSIDE · RASPBERRY PI";
+  $("local-scope").textContent = !serverMode ? "NO DEVICE (SHOWCASE)" : ind.offline ? "ROOM SENSOR OFFLINE" : s.mock ? "DEV MODE" : "ROOM SENSOR LIVE";
   $("pi-stale").textContent = ind.warming_up ? "…" : fmt(ind.stale_index);
   $("pi-trend").textContent = $("rate").textContent;
-  $("pi-air").textContent = ind.air == null ? "SIMULATED" : `${fmt(ind.air, 0)} (BASE ${fmt(ind.baseline, 0)})`;
+  $("pi-air").textContent = noIndoor || `${fmt(ind.air, 0)} (BASE ${fmt(ind.baseline, 0)})`;
   $("pi-light").textContent = ind.light == null ? "–" : fmt(ind.light, 0);
-  $("pi-status").textContent = s.sim ? "SIMULATOR" : !serverMode ? "NO DEVICE (SHOWCASE)" : ind.warming_up ? "WARMING UP" : s.mock ? "MOCK SENSORS" : "LIVE";
+  $("pi-status").textContent = ind.offline ? "OFFLINE · CHECK SENSOR/HAT" : !serverMode ? "NO DEVICE (SHOWCASE)" : ind.warming_up ? "WARMING UP" : s.mock ? "MOCK SENSORS" : "LIVE";
   $("po-aqi").textContent = fmt(sky.us_aqi);
   $("po-cat").textContent = cat.label;
   $("po-cat").style.setProperty("--c", cat.color);
   $("po-wx").textContent = `${w.icon} ${w.text} ${fmt(sky.temperature, 0, "°C")}`;
   $("po-wind").textContent = $("wx-wind").textContent;
   if (activeTab !== "replay") LocalMap.updateDevice({ color: v.color, verdict: v.label, mock: s.mock || !serverMode,
-    inside: ind.warming_up ? "WARMING UP" : `STALE ${fmt(ind.stale_index)}/100 ${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"}`,
+    inside: noIndoor || (ind.warming_up ? "WARMING UP" : `STALE ${fmt(ind.stale_index)}/100 ${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"}`),
     aqi: fmt(sky.us_aqi), cat: cat.short || cat.label, catColor: cat.color, weather: `${w.icon} ${fmt(sky.temperature, 0, "°C")}` });
 
 
   // status + ticker
   const chip = $("mode-chip");
   chip.className = "chip mono" + (s.replay ? " replay" : serverMode && !s.mock ? " live" : "");
-  chip.textContent = s.replay ? `REPLAY ${s.replay.clock}` : s.sim ? `🧪 SIMULATOR · ${s.sim.label.toUpperCase()}`
-    : serverMode ? (s.mock ? "DEVICE · MOCK SENSORS" : "DEVICE LIVE") : "SHOWCASE MODE";
-  if (s.sim && !s.replay) chip.className = "chip mono sim";
-  renderSim(s);
+  chip.textContent = s.replay ? `REPLAY ${s.replay.clock}` : !serverMode ? "SHOWCASE MODE"
+    : ind.offline ? "DEVICE · SENSOR OFFLINE" : s.mock ? "DEVICE · DEV MODE" : "DEVICE LIVE";
   const tick = `AQI ${fmt(sky.us_aqi)} · PM2.5 ${fmt(sky.pm2_5, 1)} · AOD ${fmt(sky.aod, 2)} · WIND ${s.wind_compass} ${fmt(sky.wind_speed, 0)} KM/H · ${v.label}`;
   $("hero-ticker").textContent = "LIVE › " + tick;
   $("foot-ticker").textContent = tick + (sky.stale ? ` · OFFLINE, SKY DATA ${fmt(s.sky_age_min, 0)} MIN OLD` : "");
@@ -194,30 +193,6 @@ function render(s) {
 
   if ((activeTab !== "replay" || s.replay) && !explored) applySky(s);
   renderForecast(sky);
-}
-
-// ---------- simulator backend (SKYWINDOW_SIM=1, usually port 8001) ----------
-function renderSim(s) {
-  $("sim-panel").hidden = !s.sim;
-  const peer = $("peer-link");
-  if (s.peer_port) {
-    peer.hidden = false;
-    peer.href = `${location.protocol}//${location.hostname}:${s.peer_port}/`;
-    peer.textContent = s.sim ? "LIVE DEVICE ↗" : "SIMULATOR ↗";
-    peer.title = s.sim ? "Open the real SkyWindow device" : "Open the simulator (same real sky, simulated sensors)";
-  } else peer.hidden = true;
-  if (!s.sim) return;
-  const box = $("sim-buttons");
-  if (!box.childElementCount) {
-    box.innerHTML = s.sim.scenarios.map((x) => `<button data-scn="${x.key}" title="${x.about}">${x.label.toUpperCase()}</button>`).join("");
-    box.querySelectorAll("button").forEach((b) => (b.onclick = async () => {
-      try { await api("api/sim", { scenario: b.dataset.scn }); await new Promise((r) => setTimeout(r, 1200)); poll(); }
-      catch (e) { $("sim-about").textContent = "Couldn't switch scenario: " + e.message; }
-    }));
-  }
-  box.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.scn === s.sim.scenario));
-  $("sim-about").textContent = s.sim.about + (s.sim.overrides_sky ? " (OUTSIDE AIR VALUES ARE SET BY THIS SCENARIO.)" : "") +
-    (s.sim.overrides_fires ? " (FIRE DATA IS SIMULATED.)" : "");
 }
 
 // EPA guidance for each AQI category (airnow.gov)
@@ -244,12 +219,12 @@ function renderAlert(s, sky, cat) {
   } else if (sky.us_aqi != null && cat.level >= 2) {
     const cause = LocalSky.likelyCause(sky);
     el.className = "alert mono";
-    el.innerHTML = (sky.sim_override ? "<b>🧪 SIMULATED SCENARIO</b> · " : "") + `<b>⚠ AIR QUALITY ALERT · PRINCETON · AQI ${sky.us_aqi} · ${cat.label}</b>` +
+    el.innerHTML = `<b>⚠ AIR QUALITY ALERT · PRINCETON · AQI ${sky.us_aqi} · ${cat.label}</b>` +
       (cause ? ` · LIKELY CAUSE: ${cause}` : "") + `<br>KEEP WINDOWS SHUT. ${EPA_ADVICE[cat.level].toUpperCase()}`;
     el.hidden = false;
   } else if (s.fires && s.fires.smoke_risk) {
     el.className = "alert mono historical";
-    el.innerHTML = (s.sim && s.sim.overrides_fires ? "<b>🧪 SIMULATED SCENARIO</b> · " : "") + `<b>🔥 FIRE WATCH · PHS</b> · NASA SATELLITES DETECT ${s.fires.upwind_count} FIRE HOTSPOTS UPWIND ` +
+    el.innerHTML = `<b>🔥 FIRE WATCH · PHS</b> · NASA SATELLITES DETECT ${s.fires.upwind_count} FIRE HOTSPOTS UPWIND ` +
       `(${s.fires.upwind_frp_150km} MW WITHIN 150 KM). THE AIR IS FINE RIGHT NOW, BUT SMOKE COULD DRIFT IN. WATCH THE VERDICT BEFORE OPENING WINDOWS.`;
     el.hidden = false;
   } else el.hidden = true;

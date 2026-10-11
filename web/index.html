@@ -8,7 +8,7 @@
   <!-- Libraries, fonts and Earth textures are bundled in vendor/ so the site works without internet (see vendor/README.md) -->
   <link rel="stylesheet" href="vendor/fonts/fonts.css">
   <link rel="stylesheet" href="vendor/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
   <script src="vendor/three.min.js"></script>
   <script src="vendor/gsap.min.js"></script>
   <script src="vendor/chart.umd.min.js"></script>
@@ -51,7 +51,6 @@
       </nav>
       <div class="status">
         <span class="chip mono" id="mode-chip">—</span>
-        <a class="icon mono" id="peer-link" hidden></a>
         <button class="icon mono" id="btn-sound" aria-pressed="false" title="Ambient sky sound">SOUND OFF</button>
       </div>
     </header>
@@ -59,11 +58,6 @@
     <main class="panels">
       <!-- 01 NOW -->
       <section class="panel" id="tab-now" role="tabpanel">
-        <div id="sim-panel" class="sim-panel" hidden>
-          <div class="mono label">🧪 SIMULATOR · INDOOR SENSORS ARE SIMULATED · OUTSIDE DATA IS REAL UNLESS A SCENARIO OVERRIDES IT</div>
-          <div class="sim-buttons" id="sim-buttons"></div>
-          <p class="mono fine" id="sim-about"></p>
-        </div>
         <div class="mono label">VERDICT · <span id="clock">--:--</span></div>
         <div id="verdict-label">STANDBY</div>
         <ul id="reasons" class="mono"></ul>
@@ -122,8 +116,8 @@
             <button class="ghost small" data-label="covered">covered</button>
           </div>
           <div class="row mock-only" hidden>
-            <button class="ghost small" data-mock="spike">SIMULATE VOC SPIKE</button>
-            <button class="ghost small server-only" data-mock="cover">SIMULATE COVERED LIGHT</button>
+            <button class="ghost small" data-mock="spike">TEST: VOC SPIKE</button>
+            <button class="ghost small server-only" data-mock="cover">TEST: COVER LIGHT SENSOR</button>
           </div>
         </details>
       </section>
@@ -309,10 +303,10 @@
     </footer>
   </div>
 
-  <script src="globe.js?v=7"></script>
-  <script src="audio.js?v=7"></script>
-  <script src="sky-local.js?v=7"></script>
-  <script src="local.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="globe.js?v=8"></script>
+  <script src="audio.js?v=8"></script>
+  <script src="sky-local.js?v=8"></script>
+  <script src="local.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
