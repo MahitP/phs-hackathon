@@ -1,0 +1,187 @@
+/* SkyWindow app (from the hackPHS dashboard). Every rule is scoped to #app so it can't touch the story.
+   #app sits over the story as its own scroller. It stays laid out while hidden, so the map can load its
+   tiles during the rewind; .landing shows the map under the story's dive, .shown is the open app. */
+#app {
+  position: fixed; inset: 0; z-index: 30; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; visibility: hidden; pointer-events: none;
+  --bg: #000;
+  --ink: #f4f6fb;
+  --muted: #8b95a7;
+  --line: rgba(255, 255, 255, 0.12);
+  --glass: rgba(6, 10, 18, 0.62);
+  --verdict: #60a5fa;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --sans: "Inter", Helvetica, Arial, sans-serif;
+}
+#app.landing { visibility: visible; }
+#app.shown { visibility: visible; pointer-events: auto; background: var(--bg); }
+#app.landing:not(.shown) #alert, #app.landing:not(.shown) #hud { visibility: hidden; }
+#app #verdict-label:focus:not(:focus-visible) { outline: none; }
+#app * { box-sizing: border-box; }
+#app a { color: inherit; }
+#app .mono { font-family: var(--mono); letter-spacing: 0.08em; }
+#app button { font: inherit; color: inherit; cursor: pointer; }
+#app [hidden] { display: none !important; }
+#app #globe { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: pan-y; }
+#app #vignette { position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 60% 50%, transparent 40%, rgba(0,0,0,.75) 100%); }
+#app .cta { margin-top: 20px; background: var(--ink); color: #000; border: 0; padding: 14px 26px; font-family: var(--mono);
+  font-weight: 600; letter-spacing: 0.14em; font-size: 0.82rem; border-radius: 0; transition: transform .2s, background .2s; }
+#app .cta:hover { transform: translateX(4px); background: #fff; }
+#app .cta.small, #app .ghost.small { padding: 9px 16px; font-size: 0.72rem; margin-top: 0; }
+#app .ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); font-family: var(--mono); letter-spacing: 0.1em; }
+#app .ghost:hover { border-color: var(--ink); }
+#app button:disabled { opacity: .45; cursor: wait; }
+/* ---------- HUD ---------- */
+#app #hud { position: relative; z-index: 5; min-height: 100vh; display: flex; flex-direction: column; }
+/* the globe stays touchable through empty HUD space */
+#app #hud, #app .panels { pointer-events: none; }
+#app .topbar, #app .panel, #app .hud-foot { pointer-events: auto; }
+#app .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 16px; padding: 14px clamp(16px, 3vw, 32px);
+  background: linear-gradient(180deg, rgba(0,0,0,.85), rgba(0,0,0,0)); flex-wrap: wrap; }
+#app .brand { background: none; border: 0; font-weight: 300; letter-spacing: 0.3em; font-size: 0.95rem; padding: 0; }
+#app nav { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
+#app nav button { background: none; border: 0; border-bottom: 1px solid transparent; padding: 8px 12px; font-family: var(--mono);
+  font-size: 0.72rem; letter-spacing: 0.12em; color: var(--muted); }
+#app nav button span { color: var(--muted); opacity: .6; margin-right: 6px; }
+#app nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+#app nav button:hover { color: var(--ink); }
+#app .status { display: flex; gap: 10px; align-items: center; }
+#app .chip { font-size: 0.65rem; padding: 5px 10px; border: 1px solid var(--line); }
+#app .chip.replay { border-color: #ff6a2a; color: #ffb38a; animation: app-pulse 1.2s infinite; }
+#app .chip.live { border-color: #22c55e; color: #86efac; }
+@keyframes app-pulse { 50% { opacity: .5; } }
+#app .icon { background: none; border: 1px solid var(--line); font-size: 0.65rem; padding: 5px 10px; }
+#app .icon[aria-pressed="true"] { border-color: var(--ink); }
+#app .story-btn { border-color: var(--ink); color: var(--ink); }
+#app .story-btn:hover { background: var(--ink); color: #000; }
+#app .panels { flex: 1; padding: 8px clamp(16px, 3vw, 32px) 80px; }
+#app .panel { width: min(560px, 100%); background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line); padding: clamp(18px, 3vw, 28px); }
+#app .label { font-size: 0.66rem; color: var(--muted); letter-spacing: 0.14em; }
+#app .label a { text-decoration: none; border-bottom: 1px dotted var(--muted); }
+#app h2 { font-weight: 700; font-size: 1.35rem; letter-spacing: 0.01em; margin: 8px 0 14px; }
+#app .panel p { line-height: 1.6; color: #c8cfdb; }
+#app #verdict-label { font-weight: 800; font-size: clamp(2rem, 6.5vw, 3.4rem); line-height: 1; margin: 8px 0 10px; color: var(--verdict);
+  text-shadow: 0 0 40px color-mix(in srgb, var(--verdict) 45%, transparent); transition: color .8s; }
+#app #reasons { margin: 0; padding-left: 0; list-style: none; font-size: 0.72rem; color: #c8cfdb; line-height: 1.8; }
+#app #reasons li::before { content: "› "; color: var(--verdict); }
+#app #event { font-size: 0.7rem; color: var(--muted); margin-top: 6px; }
+#app .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 20px 0; }
+#app .readout { background: rgba(0,0,0,.55); padding: 14px; }
+#app .big { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 10px; }
+#app .big span { font-size: 2.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+#app .big small { font-size: 0.62rem; color: var(--muted); }
+#app dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; margin: 0; font-size: 0.66rem; }
+#app dt { color: var(--muted); }
+#app dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+#app .meter { height: 3px; background: var(--line); margin-bottom: 12px; }
+#app #stale-bar { height: 100%; width: 0; background: var(--verdict); transition: width 1s, background .8s; }
+#app .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+#app audio { height: 34px; max-width: 100%; filter: invert(1) hue-rotate(180deg); }
+#app .fine { font-size: 0.64rem; color: var(--muted); margin-top: 10px; line-height: 1.6; }
+#app .setup { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+#app .setup summary { cursor: pointer; font-size: 0.68rem; color: var(--muted); }
+#app .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 16px 0; }
+#app .grid3 > div { background: rgba(0,0,0,.55); padding: 12px; }
+#app .val { font-size: 1.05rem; margin-top: 6px; font-variant-numeric: tabular-nums; }
+#app .wind-box { display: flex; gap: 18px; align-items: center; margin: 8px 0 18px; }
+#app #wind-arrow { transform-box: view-box; transform-origin: 50px 50px; transition: transform 1.2s; }
+#app .announce { margin-top: 12px; }
+#app .alert { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); top: 64px; width: min(760px, calc(100% - 32px));
+  background: rgba(127, 29, 29, .88); border: 1px solid #ef4444; color: #fee2e2; padding: 12px 16px; font-size: 0.72rem;
+  line-height: 1.6; backdrop-filter: blur(8px); box-shadow: 0 0 40px rgba(239,68,68,.35); }
+#app .alert b { color: #fff; }
+#app .alert.historical { background: rgba(67, 37, 10, .88); border-color: #f97316; color: #ffedd5; box-shadow: none; }
+#app .cat { font-size: 0.64rem; letter-spacing: .12em; color: var(--c, var(--muted)); margin: -4px 0 10px; }
+#app .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.6rem; color: var(--muted); }
+#app .legend span::before { content: "●"; color: var(--c); margin-right: 5px; }
+#app .mt { margin-top: 18px; }
+#app #announce-text { margin: 0; flex: 1 1 200px; }
+#app .explore-card { border: 1px solid var(--line); background: rgba(0,0,0,.5); padding: 16px; margin-top: 16px; }
+#app .explore-card h3 { margin: 6px 0 4px; font-size: 1.2rem; }
+#app .x-verdict { font-weight: 800; font-size: 1.6rem; color: var(--x, var(--ink)); text-shadow: 0 0 30px color-mix(in srgb, var(--x, #fff) 40%, transparent); }
+#app .hud-foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px clamp(16px, 3vw, 32px); font-size: 0.6rem; color: var(--muted); background: linear-gradient(0deg, rgba(0,0,0,.85), transparent); }
+@media (max-width: 640px) {
+#app .grid2 { grid-template-columns: 1fr; }
+#app .grid3 { grid-template-columns: repeat(2, 1fr); }
+#app .topbar { gap: 8px 12px; padding: 10px 16px; background: rgba(0, 0, 0, .9); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); } /* the tab row wraps under it: no see-through */
+#app .brand { font-size: 0.8rem; }
+#app .status { margin-left: auto; }
+#app .chip, #app .icon { font-size: 0.58rem; padding: 4px 8px; }
+#app nav { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#app nav::-webkit-scrollbar { display: none; }
+#app nav button { padding: 6px 8px; font-size: 0.64rem; white-space: nowrap; }
+#app nav button span { display: none; }
+#app .panels { padding-bottom: 24px; }
+#app .panel { backdrop-filter: blur(8px); background: rgba(6, 10, 18, 0.78); }
+#app .hud-foot { position: static; }
+#app #foot-ticker { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+#app * { transition: none !important; animation: none !important; }
+}
+/* ---------- local map ---------- */
+#app #localmap { position: fixed; inset: 0; z-index: 2; background: #0b0f17; }
+#app .leaflet-container { font-family: var(--mono); }
+#app .leaflet-control-attribution { background: rgba(0,0,0,.6) !important; color: var(--muted) !important; font-size: 9px; }
+#app .leaflet-control-attribution a { color: #c8cfdb !important; }
+#app .leaflet-bar a { background: rgba(6,10,18,.85); color: var(--ink); border-color: var(--line); }
+#app .leaflet-tooltip { background: rgba(6,10,18,.92); color: var(--ink); border: 1px solid var(--line); font-family: var(--mono); font-size: 10px; box-shadow: none; }
+#app .leaflet-tooltip-top:before { border-top-color: rgba(6,10,18,.92); }
+#app .aqi-label { color: rgba(255,255,255,.75); font-family: var(--mono); font-size: 10px; text-align: center; text-shadow: 0 0 4px #000; }
+#app [data-layer].on { border-color: var(--ink); background: rgba(255,255,255,.08); }
+#app .fire-summary { font-size: 0.85rem; line-height: 1.6; color: #c8cfdb; margin-top: 6px; }
+#app .fire-summary b { color: var(--ink); }
+#app .fire-summary .risk { color: #fdba74; }
+/* ---------- weather strip ---------- */
+#app .wx { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 8px 0 12px; }
+#app .wx > div { background: rgba(0,0,0,.55); padding: 10px; }
+#app .wx .val { font-size: 0.82rem; }
+#app .fireline { font-size: 0.64rem; color: var(--muted); line-height: 1.6; }
+#app .fireline.risk { color: #fdba74; }
+@media (max-width: 640px) {
+#app .wx { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+/* keep the map visible on phones: dock the LOCAL panel to the bottom half */
+#app #tab-local { position: fixed; left: 0; right: 0; bottom: 0; max-height: 50vh; overflow-y: auto; width: 100%; z-index: 6; }
+#app #tab-local p:first-of-type { display: none; }
+}
+/* ---------- device marker on the map ---------- */
+#app .device-pin { --v: #60a5fa; position: relative; }
+#app .device-pin .core { position: absolute; inset: 5px; border-radius: 50%; background: var(--v); border: 2px solid #fff; box-shadow: 0 0 12px var(--v); }
+#app .device-pin .pulse { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--v); animation: app-ping 1.8s ease-out infinite; }
+@keyframes app-ping { from { transform: scale(.6); opacity: 1; } to { transform: scale(2.4); opacity: 0; } }
+#app .leaflet-tooltip.device-tip { padding: 8px 10px; min-width: 190px; border-color: rgba(255,255,255,.25); }
+#app .device-tip .dt-title { font-size: 9px; color: var(--muted); letter-spacing: .14em; }
+#app .device-tip .dt-verdict { font-family: var(--sans); font-weight: 800; font-size: 15px; margin: 2px 0 4px; }
+#app .device-tip .dt-row { display: flex; justify-content: space-between; gap: 12px; font-size: 9.5px; color: var(--muted); }
+#app .device-tip .dt-row b { color: var(--ink); font-weight: 600; }
+#app .grid2.tight { margin: 12px 0; }
+#app [data-base].on, #app [data-view].on, #app [data-region].on { border-color: var(--ink); background: rgba(255,255,255,.08); }
+#app .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
+/* ---------- scope strips: keep CAMPUS (local) and EARTH (global) visually distinct ---------- */
+#app .scope { display: inline-block; font-size: 0.62rem; letter-spacing: .14em; padding: 5px 10px; margin-bottom: 4px; }
+#app .scope.local { color: #86efac; border: 1px solid rgba(34,197,94,.5); background: rgba(34,197,94,.08); }
+#app .scope.global { color: #93c5fd; border: 1px solid rgba(96,165,250,.5); background: rgba(96,165,250,.08); }
+#app .dist-bar { display: flex; height: 14px; margin: 8px 0 6px; border: 1px solid var(--line); }
+#app .dist-bar div { height: 100%; transition: width .6s; }
+#app .compare { width: 100%; border-collapse: collapse; font-size: 0.7rem; margin-top: 10px; }
+#app .compare th { text-align: right; color: var(--muted); font-weight: 400; font-size: 0.6rem; letter-spacing: .12em; padding: 4px 6px; }
+#app .compare td { padding: 6px; border-top: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+#app .compare td:first-child { text-align: left; color: var(--muted); font-size: 0.6rem; letter-spacing: .1em; }
+#app .compare td.worse { color: #fca5a5; }
+#app .compare td.better { color: #86efac; }
+/* region focus bar over the globe (EARTH + FORECAST) */
+#app .regions { position: fixed; z-index: 6; right: clamp(16px, 3vw, 32px); bottom: 48px; display: flex; flex-wrap: wrap; gap: 4px;
+  justify-content: flex-end; max-width: min(560px, 50vw); pointer-events: auto; }
+#app .regions .label { width: 100%; text-align: right; font-size: 0.58rem; color: var(--muted); }
+#app .regions button { background: rgba(6,10,18,.7); border: 1px solid var(--line); color: var(--muted); font: inherit; font-size: 0.62rem;
+  letter-spacing: .1em; padding: 6px 10px; backdrop-filter: blur(6px); }
+#app .regions button:hover, #app .regions button.on { color: var(--ink); border-color: var(--ink); }
+@media (max-width: 900px) {
+#app .regions { left: 16px; right: 16px; max-width: none; justify-content: flex-start; bottom: auto; top: 96px; }
+#app .regions .label { display: none; }
+}

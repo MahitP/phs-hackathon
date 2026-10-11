@@ -1,0 +1,484 @@
+{
+ "_doc": "Every sound SkyWindow ships: where it comes from, its licence and credit (sources), and how each cue is cut from it (cues). scripts/fetch_audio.py downloads the sources into .cache/audio/<source>/ and writes web/assets/audio/.",
+ "sources": {
+  "penumbra": {
+   "url": "https://www.scottbuckley.com.au/library/wp-content/uploads/2025/07/Penumbra.mp3",
+   "page": "https://www.scottbuckley.com.au/library/penumbra/",
+   "license": "CC BY 4.0",
+   "credit": "“Penumbra” by Scott Buckley (www.scottbuckley.com.au), CC BY 4.0",
+   "referer": "https://www.scottbuckley.com.au/library/penumbra/"
+  },
+  "cirrus": {
+   "url": "https://www.scottbuckley.com.au/library/wp-content/uploads/2023/03/Cirrus.mp3",
+   "page": "https://www.scottbuckley.com.au/library/cirrus/",
+   "license": "CC BY 4.0",
+   "credit": "“Cirrus” by Scott Buckley (www.scottbuckley.com.au), CC BY 4.0",
+   "referer": "https://www.scottbuckley.com.au/library/cirrus/"
+  },
+  "dawn": {
+   "url": "https://www.scottbuckley.com.au/library/wp-content/uploads/2022/11/HymnToTheDawn.mp3",
+   "page": "https://www.scottbuckley.com.au/library/hymn-to-the-dawn/",
+   "license": "CC BY 4.0",
+   "credit": "“Hymn to the Dawn” by Scott Buckley (www.scottbuckley.com.au), CC BY 4.0",
+   "referer": "https://www.scottbuckley.com.au/library/hymn-to-the-dawn/"
+  },
+  "chorus": {
+   "url": "https://www.nasa.gov/wp-content/uploads/2022/02/plasmawaves-chorus.mp3",
+   "page": "https://www.nasa.gov/missions/mms/nasa-listens-in-as-electrons-whistle-while-they-work/",
+   "license": "NASA media (no copyright), credit requested",
+   "credit": "“Chorus Plasma Waves”, EMFISIS on NASA's Van Allen Probes. Credit: NASA/University of Iowa"
+  },
+  "classroom": {
+   "url": "https://cdn.freesound.org/previews/258/258094_1218676-hq.mp3",
+   "page": "https://freesound.org/people/joedeshon/sounds/258094/",
+   "license": "CC0 1.0",
+   "credit": "“classroom_ambiance.wav” by joedeshon (freesound.org/s/258094), CC0"
+  },
+  "sash": {
+   "url": "https://cdn.freesound.org/previews/565/565086_4980667-hq.mp3",
+   "page": "https://freesound.org/people/jamesdrake89/sounds/565086/",
+   "license": "CC0 1.0",
+   "credit": "“Sash Window Open and Close” by jamesdrake89 (freesound.org/s/565086), CC0"
+  },
+  "window-big": {
+   "url": "https://cdn.freesound.org/previews/563/563548_10443988-hq.mp3",
+   "page": "https://freesound.org/people/ValentinPetiteau/sounds/563548/",
+   "license": "CC0 1.0",
+   "credit": "“Window - big - wooden - open - close - rubber seal - morning.wav” by ValentinPetiteau (freesound.org/s/563548), CC0"
+  },
+  "window-latch": {
+   "url": "https://cdn.freesound.org/previews/407/407324_612689-hq.mp3",
+   "page": "https://freesound.org/people/kyles/sounds/407324/",
+   "license": "CC0 1.0",
+   "credit": "“window wood with latches open close thud rattle click on offmic.wav” by kyles (freesound.org/s/407324), CC0"
+  },
+  "clock": {
+   "url": "https://cdn.freesound.org/previews/434/434841_1738686-hq.mp3",
+   "page": "https://freesound.org/people/giddster/sounds/434841/",
+   "license": "CC0 1.0",
+   "credit": "“Kitchen Wall Clock Ticking 2” by giddster (freesound.org/s/434841), CC0"
+  },
+  "hum": {
+   "url": "https://cdn.freesound.org/previews/733/733737_12024110-hq.mp3",
+   "page": "https://freesound.org/people/chungus43A/sounds/733737/",
+   "license": "CC0 1.0",
+   "credit": "“60Hz electrical mains hum” by chungus43A (freesound.org/s/733737), CC0"
+  },
+  "backyard": {
+   "url": "https://cdn.freesound.org/previews/518/518929_6652872-hq.mp3",
+   "page": "https://freesound.org/people/khenshom/sounds/518929/",
+   "license": "CC0 1.0",
+   "credit": "“Ambience - Backyard of a suburban street” by khenshom (freesound.org/s/518929), CC0"
+  },
+  "park": {
+   "url": "https://cdn.freesound.org/previews/128/128942_1559251-hq.mp3",
+   "page": "https://freesound.org/people/Apostolinkyyti/sounds/128942/",
+   "license": "CC0 1.0",
+   "credit": "“Park_Day_Pleasantwind_roadhumm_Birds.wav” by Apostolinkyyti (freesound.org/s/128942), CC0"
+  },
+  "trees": {
+   "url": "https://cdn.freesound.org/previews/150/150174_229898-hq.mp3",
+   "page": "https://freesound.org/people/deleted_user_229898/sounds/150174/",
+   "license": "CC0 1.0",
+   "credit": "“wind in the trees” by deleted_user_229898 (freesound.org/s/150174), CC0"
+  },
+  "breeze": {
+   "url": "https://cdn.freesound.org/previews/181/181801_3153523-hq.mp3",
+   "page": "https://freesound.org/people/keweldog/sounds/181801/",
+   "license": "CC0 1.0",
+   "credit": "“breeze.wav” by keweldog (freesound.org/s/181801), CC0"
+  },
+  "office-traffic": {
+   "url": "https://cdn.freesound.org/previews/135/135097_658546-hq.mp3",
+   "page": "https://freesound.org/people/mzui/sounds/135097/",
+   "license": "CC0 1.0",
+   "credit": "“Room Tone Office Quiet Distant Traffic.wav” by mzui (freesound.org/s/135097), CC0"
+  },
+  "car-a": {
+   "url": "https://cdn.freesound.org/previews/171/171447_3191786-hq.mp3",
+   "page": "https://freesound.org/people/hinzebeat/sounds/171447/",
+   "license": "CC0 1.0",
+   "credit": "“Car passing by.wav” by hinzebeat (freesound.org/s/171447), CC0"
+  },
+  "car-b": {
+   "url": "https://cdn.freesound.org/previews/465/465397_9786444-hq.mp3",
+   "page": "https://freesound.org/people/JPBILLINGSLEYJR/sounds/465397/",
+   "license": "CC0 1.0",
+   "credit": "“One car passing by” by JPBILLINGSLEYJR (freesound.org/s/465397), CC0"
+  },
+  "crickets": {
+   "url": "https://cdn.freesound.org/previews/333/333221_2098408-hq.mp3",
+   "page": "https://freesound.org/people/hdfreema/sounds/333221/",
+   "license": "CC0 1.0",
+   "credit": "“Night Crickets Back Porch.aiff” by hdfreema (freesound.org/s/333221), CC0"
+  },
+  "rain": {
+   "url": "https://cdn.freesound.org/previews/161/161705_1116512-hq.mp3",
+   "page": "https://freesound.org/people/allrealsound/sounds/161705/",
+   "license": "CC0 1.0",
+   "credit": "“Rain from inside.wav” by allrealsound (freesound.org/s/161705), CC0"
+  },
+  "geese": {
+   "url": "https://cdn.freesound.org/previews/201/201726_3153523-hq.mp3",
+   "page": "https://freesound.org/people/keweldog/sounds/201726/",
+   "license": "CC0 1.0",
+   "credit": "“canda geese.wav” by keweldog (freesound.org/s/201726), CC0"
+  },
+  "marker": {
+   "url": "https://cdn.freesound.org/previews/251/251677_3689746-hq.mp3",
+   "page": "https://freesound.org/people/edctrainer/sounds/251677/",
+   "license": "CC0 1.0",
+   "credit": "“marker on whiteboard” by edctrainer (freesound.org/s/251677), CC0"
+  },
+  "paper": {
+   "url": "https://cdn.freesound.org/previews/181/181774_3153523-hq.mp3",
+   "page": "https://freesound.org/people/keweldog/sounds/181774/",
+   "license": "CC0 1.0",
+   "credit": "“rustling paper.wav” by keweldog (freesound.org/s/181774), CC0"
+  },
+  "whoosh-a": {
+   "url": "https://cdn.freesound.org/previews/683/683096_6253486-hq.mp3",
+   "page": "https://freesound.org/people/florianreichelt/sounds/683096/",
+   "license": "CC0 1.0",
+   "credit": "“Woosh” by florianreichelt (freesound.org/s/683096), CC0"
+  },
+  "whoosh-b": {
+   "url": "https://cdn.freesound.org/previews/701/701104_13504080-hq.mp3",
+   "page": "https://freesound.org/people/xkeril/sounds/701104/",
+   "license": "CC0 1.0",
+   "credit": "“Whoosh stereo light (transition)” by xkeril (freesound.org/s/701104), CC0"
+  },
+  "boom": {
+   "url": "https://cdn.freesound.org/previews/165/165109_2306150-hq.mp3",
+   "page": "https://freesound.org/people/rickeyc/sounds/165109/",
+   "license": "CC0 1.0",
+   "credit": "“Low Movie Boom.mp3” by rickeyc (freesound.org/s/165109), CC0"
+  },
+  "rumble": {
+   "url": "https://cdn.freesound.org/previews/321/321812_5501856-hq.mp3",
+   "page": "https://freesound.org/people/mmasonghi/sounds/321812/",
+   "license": "CC0 1.0",
+   "credit": "“Cinematic Deep Bass Rumble” by mmasonghi (freesound.org/s/321812), CC0"
+  },
+  "relay": {
+   "url": "https://cdn.freesound.org/previews/384/384701_1067129-hq.mp3",
+   "page": "https://freesound.org/people/bassmosphere/sounds/384701/",
+   "license": "CC0 1.0",
+   "credit": "“Relay and loud click” by bassmosphere (freesound.org/s/384701), CC0"
+  },
+  "beep": {
+   "url": "https://cdn.freesound.org/previews/321/321906_1755779-hq.mp3",
+   "page": "https://freesound.org/people/bruce965/sounds/321906/",
+   "license": "CC0 1.0",
+   "credit": "“Walkie Talkie - Roger Beep” by bruce965 (freesound.org/s/321906), CC0"
+  },
+  "tape": {
+   "url": "https://cdn.freesound.org/previews/523/523282_129727-hq.mp3",
+   "page": "https://freesound.org/people/MrFossy/sounds/523282/",
+   "license": "CC0 1.0",
+   "credit": "“Foley_TapeMeasure_ClickLock.wav” by MrFossy (freesound.org/s/523282), CC0"
+  }
+ },
+ "cues": {
+  "penumbra": {
+   "kind": "music",
+   "src": "penumbra",
+   "start": 0,
+   "end": 186.5,
+   "xfade": 6,
+   "note": "act 1: orbit and the 2023 smoke; ends in the dip at 186 s"
+  },
+  "cirrus": {
+   "kind": "music",
+   "src": "cirrus",
+   "start": 0,
+   "end": 164,
+   "xfade": 6,
+   "note": "act 2: Princeton and the sunbeam; ends in the trough at 164 s"
+  },
+  "dawn": {
+   "kind": "music",
+   "src": "dawn",
+   "start": 0,
+   "end": 198.5,
+   "xfade": 8,
+   "note": "act 3: the classroom; ends in the dip at 198 s"
+  },
+  "dawn-end": {
+   "kind": "music",
+   "src": "dawn",
+   "start": 360,
+   "end": null,
+   "fadeOut": 0.5,
+   "note": "the last phrase, from T 8 (Right now) to the hand-off"
+  },
+  "chorus": {
+   "kind": "bed",
+   "src": "chorus",
+   "start": 0,
+   "end": 10.6,
+   "loop": true,
+   "xfade": 2.0,
+   "note": "Earth's radiation belts, act 1, very low"
+  },
+  "rumble": {
+   "kind": "bed",
+   "src": "rumble",
+   "start": 13.5,
+   "end": 23.5,
+   "loop": true,
+   "xfade": 3.0,
+   "note": "the 2023 plume, follows its AOD"
+  },
+  "birds": {
+   "kind": "bed",
+   "src": "backyard",
+   "start": 2,
+   "end": 130,
+   "loop": true,
+   "xfade": 4.0,
+   "note": "suburban backyard birds"
+  },
+  "park": {
+   "kind": "bed",
+   "src": "park",
+   "start": 4,
+   "end": 130,
+   "loop": true,
+   "xfade": 4.0,
+   "note": "park, light wind and road hum"
+  },
+  "trees": {
+   "kind": "bed",
+   "src": "trees",
+   "start": 4,
+   "end": 116,
+   "loop": true,
+   "xfade": 5.0,
+   "note": "wind in the trees, follows the live wind"
+  },
+  "breeze": {
+   "kind": "bed",
+   "src": "breeze",
+   "start": 2,
+   "end": 62,
+   "loop": true,
+   "xfade": 4.0
+  },
+  "traffic": {
+   "kind": "bed",
+   "src": "office-traffic",
+   "start": 2,
+   "end": 64,
+   "loop": true,
+   "xfade": 4.0,
+   "note": "distant traffic"
+  },
+  "crickets": {
+   "kind": "bed",
+   "src": "crickets",
+   "start": 10,
+   "end": 100,
+   "loop": true,
+   "xfade": 4.0,
+   "note": "after dark above 10 °C"
+  },
+  "rain": {
+   "kind": "bed",
+   "src": "rain",
+   "start": 0.5,
+   "end": 36,
+   "loop": true,
+   "xfade": 3.0,
+   "note": "rain heard from inside"
+  },
+  "room": {
+   "kind": "bed",
+   "src": "classroom",
+   "start": 2,
+   "end": 50,
+   "loop": true,
+   "xfade": 4.0,
+   "filters": [
+    "highpass=f=50"
+   ],
+   "note": "classroom room tone"
+  },
+  "hum": {
+   "kind": "bed",
+   "src": "hum",
+   "start": 0.3,
+   "end": 5.2,
+   "loop": true,
+   "xfade": 0.6,
+   "note": "60 Hz fluorescent/mains hum in school hours"
+  },
+  "swell": {
+   "kind": "sfx",
+   "src": "rumble",
+   "start": 0,
+   "end": 12,
+   "fadeOut": 2.0,
+   "note": "loader: the bands part on a low air swell"
+  },
+  "whoosh": {
+   "kind": "sfx",
+   "src": "whoosh-a",
+   "start": 0,
+   "end": 1.75,
+   "note": "cloud curtain"
+  },
+  "whoosh-light": {
+   "kind": "sfx",
+   "src": "whoosh-b",
+   "start": 0,
+   "end": 2.35,
+   "note": "cloud curtain, second layer"
+  },
+  "boom": {
+   "kind": "sfx",
+   "src": "boom",
+   "start": 6.0,
+   "end": 11.86,
+   "fadeOut": 1.0,
+   "note": "the plume arrives"
+  },
+  "sash-up": {
+   "kind": "sfx",
+   "src": "sash",
+   "start": 1.3,
+   "end": 6.6,
+   "fadeIn": 0.05,
+   "fadeOut": 0.4,
+   "mono": true,
+   "note": "the sash rises (story 5.3-5.55)"
+  },
+  "sash-down": {
+   "kind": "sfx",
+   "src": "sash",
+   "start": 10.6,
+   "end": 14.4,
+   "fadeIn": 0.05,
+   "fadeOut": 0.3,
+   "mono": true,
+   "note": "the sash closes and drops"
+  },
+  "sash-thunk": {
+   "kind": "sfx",
+   "src": "sash",
+   "start": 13.6,
+   "end": 14.35,
+   "fadeOut": 0.2,
+   "mono": true,
+   "note": "the sash hits its stop"
+  },
+  "sash-slide": {
+   "kind": "sfx",
+   "src": "sash",
+   "start": 2.0,
+   "end": 6.2,
+   "loop": true,
+   "xfade": 0.6,
+   "mono": true,
+   "note": "friction loop while dragging; rate follows speed"
+  },
+  "latch": {
+   "kind": "sfx",
+   "src": "window-latch",
+   "start": 5.3,
+   "end": 5.8,
+   "mono": true,
+   "note": "the sash latch"
+  },
+  "snap": {
+   "kind": "sfx",
+   "src": "window-latch",
+   "start": 0.13,
+   "end": 0.55,
+   "mono": true,
+   "note": "the device's parts rejoin"
+  },
+  "thud": {
+   "kind": "sfx",
+   "src": "window-big",
+   "start": 11.22,
+   "end": 12.0,
+   "fadeOut": 0.15,
+   "mono": true
+  },
+  "tick": {
+   "kind": "sfx",
+   "src": "clock",
+   "start": 2.675,
+   "end": 2.9,
+   "filters": [
+    "highpass=f=500"
+   ],
+   "fadeOut": 0.05,
+   "mono": true,
+   "note": "wall clock, every real second"
+  },
+  "tock": {
+   "kind": "sfx",
+   "src": "clock",
+   "start": 3.675,
+   "end": 3.9,
+   "filters": [
+    "highpass=f=500"
+   ],
+   "fadeOut": 0.05,
+   "mono": true,
+   "note": "wall clock / the ruler's detent"
+  },
+  "relay": {
+   "kind": "sfx",
+   "src": "relay",
+   "start": 0,
+   "end": 0.58,
+   "mono": true,
+   "note": "device: a part releases"
+  },
+  "beep": {
+   "kind": "sfx",
+   "src": "beep",
+   "start": 0,
+   "end": 0.65,
+   "mono": true,
+   "note": "device speaker: the verdict changed"
+  },
+  "tape": {
+   "kind": "sfx",
+   "src": "tape",
+   "start": 9.38,
+   "end": 9.85,
+   "mono": true,
+   "note": "tape-measure click-lock: the time ruler"
+  },
+  "car-a": {
+   "kind": "sfx",
+   "src": "car-a",
+   "start": 0,
+   "end": 5.4,
+   "fadeOut": 0.3,
+   "mono": true
+  },
+  "car-b": {
+   "kind": "sfx",
+   "src": "car-b",
+   "start": 2.5,
+   "end": 9.9,
+   "fadeIn": 0.3,
+   "fadeOut": 0.5,
+   "mono": true
+  },
+  "geese": {
+   "kind": "sfx",
+   "src": "geese",
+   "start": 1.0,
+   "end": 21.0,
+   "fadeIn": 1.0,
+   "fadeOut": 3.0,
+   "note": "October: geese overhead, now and then"
+  }
+ }
+}

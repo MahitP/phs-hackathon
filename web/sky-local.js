@@ -11,9 +11,15 @@ const LocalSky = (() => {
   let sky = null, fetchedAt = 0, stale = 18, spikeUntil = 0, lastIdx = 18, lastT = Date.now();
   let replay = null; // {hours, start}
   let replayData = null;
+  let lastVerdict = null; // hysteresis, as on the Pi
 
   const qs = (o) => new URLSearchParams(o).toString();
   async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+  // the weather is optional: the verdict runs on the air. If the weather API is down or rate-limited
+  // (it allows 10,000 calls a day per address), carry on with the last weather we had, or none.
+  let lastWx = null;
+  const NO_WX = { current: {}, hourly: {} };
+  const weather = (url) => getJSON(url).then((w) => (lastWx = w)).catch(() => lastWx || NO_WX);
 
   async function fetchSky() {
     if (sky && Date.now() - fetchedAt < 600000) return;
@@ -21,10 +27,9 @@ const LocalSky = (() => {
     const [aq, wx] = await Promise.all([
       getJSON("https://air-quality-api.open-meteo.com/v1/air-quality?" + qs({ ...base,
         current: "us_aqi,pm2_5,pm10,ozone,dust,aerosol_optical_depth,uv_index", hourly: "us_aqi,pm2_5,aerosol_optical_depth" })),
-      getJSON("https://api.open-meteo.com/v1/forecast?" + qs({ ...base,
+      weather("https://api.open-meteo.com/v1/forecast?" + qs({ ...base,
         current: WX_NOW + ",shortwave_radiation",
-        hourly: "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability,weather_code",
-        daily: "sunrise,sunset,uv_index_max" })),
+        hourly: "cloud_cover,wind_direction_10m,wind_speed_10m,temperature_2m,precipitation_probability" })),
     ]);
     const c = { ...aq.current, ...wx.current };
     sky = { time: c.time, us_aqi: c.us_aqi, pm2_5: c.pm2_5, pm10: c.pm10, ozone: c.ozone, dust: c.dust,
@@ -32,9 +37,7 @@ const LocalSky = (() => {
       wind_speed: c.wind_speed_10m, wind_dir: c.wind_direction_10m, radiation: c.shortwave_radiation, is_day: c.is_day,
       forecast: { time: aq.hourly.time, us_aqi: aq.hourly.us_aqi, pm2_5: aq.hourly.pm2_5, aod: aq.hourly.aerosol_optical_depth,
         cloud_cover: wx.hourly.cloud_cover, wind_dir: wx.hourly.wind_direction_10m,
-        temperature: wx.hourly.temperature_2m, precip_prob: wx.hourly.precipitation_probability,
-        weather_code: wx.hourly.weather_code, wind_speed: wx.hourly.wind_speed_10m },
-      daily: { time: wx.daily.time, sunrise: wx.daily.sunrise, sunset: wx.daily.sunset, uv_max: wx.daily.uv_index_max },
+        temperature: wx.hourly.temperature_2m, precip_prob: wx.hourly.precipitation_probability },
       source: "live", stale: false };
     fetchedAt = Date.now();
   }
@@ -84,13 +87,14 @@ const LocalSky = (() => {
 
   /** Official U.S. EPA AQI categories. */
   function aqiCategory(aqi) {
-    if (aqi == null) return { label: "NO DATA", color: "#8b95a7", level: -1 };
-    if (aqi <= 50) return { label: "GOOD", color: "#22c55e", level: 0 };
-    if (aqi <= 100) return { label: "MODERATE", color: "#eab308", level: 1 };
-    if (aqi <= 150) return { label: "UNHEALTHY FOR SENSITIVE GROUPS", short: "SENSITIVE", color: "#f97316", level: 2 };
-    if (aqi <= 200) return { label: "UNHEALTHY", color: "#ef4444", level: 3 };
-    if (aqi <= 300) return { label: "VERY UNHEALTHY", color: "#a855f7", level: 4 };
-    return { label: "HAZARDOUS", color: "#9f1239", level: 5 };
+    // colors: the EPA category fills used across the dashboard's data bars and globe dots
+    if (aqi == null) return { label: "NO DATA", color: "#5B636B", level: -1 };
+    if (aqi <= 50) return { label: "GOOD", color: "#4AA969", level: 0 };
+    if (aqi <= 100) return { label: "MODERATE", color: "#E5C14A", level: 1 };
+    if (aqi <= 150) return { label: "UNHEALTHY FOR SENSITIVE GROUPS", short: "SENSITIVE", color: "#E48233", level: 2 };
+    if (aqi <= 200) return { label: "UNHEALTHY", color: "#C44134", level: 3 };
+    if (aqi <= 300) return { label: "VERY UNHEALTHY", color: "#733893", level: 4 };
+    return { label: "HAZARDOUS", color: "#6A1D30", level: 5 };
   }
 
   /** Best guess at what is dirtying the air, from the same model data. */
@@ -122,7 +126,7 @@ const LocalSky = (() => {
     const [aq, wx, place] = await Promise.all([
       getJSON("https://air-quality-api.open-meteo.com/v1/air-quality?" + qs({ ...base,
         current: "us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,dust,aerosol_optical_depth,uv_index" })),
-      getJSON("https://api.open-meteo.com/v1/forecast?" + qs({ ...base, current: WX_NOW + ",dew_point_2m,surface_pressure,visibility" })),
+      getJSON("https://api.open-meteo.com/v1/forecast?" + qs({ ...base, current: WX_NOW + ",dew_point_2m,surface_pressure,visibility" })).catch(() => NO_WX),
       placeName(lat, lon),
     ]);
     const c = { ...aq.current, ...wx.current };
@@ -227,19 +231,46 @@ const LocalSky = (() => {
       haze_transmission: elev > 3 && s.aod != null ? Math.round(100 * Math.exp(-s.aod / cz)) : null };
   }
 
-  function decide(idx, rate, s) {
-    const aqi = s.us_aqi, pm = s.pm2_5, aod = s.aod;
-    let level = "good", why = `outdoor AQI ${aqi} (${aqiCategory(aqi).label.toLowerCase()})`;
-    if ((aqi != null && aqi > 100) || (pm != null && pm > 35.4)) { level = "bad"; why = `outdoor AQI ${aqi} (${aqiCategory(aqi).label.toLowerCase()}), PM2.5 ${pm} ug/m3`; }
-    else if (aod != null && aod > 0.7) { level = "bad"; why = `heavy haze overhead (aerosol optical depth ${aod})`; }
-    else if (aqi != null && aqi > 50) { level = "moderate"; why = `outdoor AQI ${aqi} (moderate)`; }
-    const spike = rate > 40 * 100 / 250 || idx >= 70; // server SPIKE_RATE is in sensor units; we work in index units
-    const reasons = [why, `indoor stale index ${idx}/100` + (rate > 16 ? " (rising fast!)" : "")];
+  // hysteresis margins (server HYST); index margin is already in index units
+  const HYST = { aqi: 5, pm2_5: 3.0, aod: 0.05, index: 10 };
+
+  function outdoorLevel(s, prev) {
+    if (!s) return ["unknown", "no sky data"];
+    const aqi = s.us_aqi, pm = s.pm2_5, aod = s.aod, cat = aqiCategory(aqi).label.toLowerCase();
+    const bad = prev === "bad" ? 1 : 0, mod = prev === "bad" || prev === "moderate" ? 1 : 0;
+    if ((aqi != null && aqi > 100 - bad * HYST.aqi) || (pm != null && pm > 35.4 - bad * HYST.pm2_5))
+      return ["bad", `outdoor AQI ${aqi} (${cat}), PM2.5 ${pm} ug/m3`];
+    if (aod != null && aod > 0.7 - bad * HYST.aod) return ["bad", `heavy haze overhead (aerosol optical depth ${aod})`];
+    if (aqi != null && aqi > 50 - mod * HYST.aqi) return ["moderate", `outdoor AQI ${aqi} (moderate)`];
+    return ["good", `outdoor AQI ${aqi} (${cat})`];
+  }
+
+  /** Mirrors server/decide.py decide(); `fires` is the FIRMS summary, `prev` the last verdict (hysteresis). */
+  function decide(idx, rate, s, { fires = null, prev = null } = {}) {
+    const prevKey = prev ? prev.key : null;
+    const [level, why] = outdoorLevel(s, prev ? prev.outdoor_level : null);
+    const rising = rate > 40 * 100 / 250; // server SPIKE_RATE is in sensor units; we work in index units
+    const spike = rising || idx >= 70 - (prevKey === "ventilate" ? HYST.index : 0);
+    const stale = idx >= 40 - (prevKey === "open" ? HYST.index : 0);
+    const reasons = [why, `indoor stale index ${idx}/100` + (rising ? " (rising fast!)" : "")];
     let key;
     if (level === "bad") { key = "shut"; if (spike) reasons.push("indoor spike too - run a purifier or fan instead of opening the window"); }
     else if (spike) key = "ventilate";
-    else if (level === "good") { key = "open"; if (idx < 25) reasons.push("both sides are clean - fresh air is a bonus"); }
-    else key = "either";
+    else if (level === "good") {
+      key = "open";
+      reasons.push(idx >= 25 ? "your room is staler than the sky - let it in" : "both sides are clean - fresh air is a bonus");
+    } else if (level === "moderate" && stale) {
+      key = "open";
+      reasons.push("your room is staler than the moderate sky - air it out for a few minutes");
+    } else {
+      key = "either";
+      if (level === "moderate") reasons.push("inside and outside are about the same");
+    }
+    // NASA satellite fire detections upwind: the air is measured clean now, but smoke could arrive
+    if (fires && fires.smoke_risk) {
+      reasons.push(`${fires.upwind_count} satellite fire detections upwind (${fires.upwind_frp_150km} MW within 150 km) - smoke could drift in`);
+      if (key === "open") key = "either";
+    }
     return { key, label: VERDICTS[key][0], color: VERDICTS[key][1], reasons, stale_index: idx, outdoor_level: level };
   }
 
@@ -247,8 +278,13 @@ const LocalSky = (() => {
 
   async function state() {
     await fetchSky();
-    // no SkyWindow device here, so there is no room reading at all: the verdict uses outside air only
-    const now = Date.now();
+    // simulated room: slow stale build-up, spikes on demand
+    const now = Date.now(), dt = (now - lastT) / 1000; lastT = now;
+    stale = Math.min(60, stale + dt * 0.01);
+    let idx = stale;
+    if (now < spikeUntil) idx += 80 * Math.sin(Math.PI * Math.min(1, (spikeUntil - now) / 20000));
+    idx = Math.round(Math.max(0, Math.min(100, idx)));
+    const rate = (idx - lastIdx) / Math.max(dt / 60, 1e-3); lastIdx = idx;
 
     let s = sky, info = null, when = new Date();
     if (replay) {
@@ -264,12 +300,9 @@ const LocalSky = (() => {
         when = new Date(h.time + ":00-04:00");
       }
     }
-    const verdict = decide(0, 0, s);
-    verdict.reasons = verdict.reasons.filter((r) => !r.startsWith("indoor") && !r.startsWith("both sides"));
-    verdict.reasons.push("no SkyWindow device connected - deciding on outside air only");
-    verdict.stale_index = null;
-    return { verdict, sky: s, clarity: clarity(s, when), replay: info, event: null, mock: false,
-      indoor: { air: null, light: null, baseline: null, rate_per_min: 0, stale_index: null, warming_up: false, no_device: true },
+    const verdict = decide(idx, rate, s, { prev: lastVerdict }); lastVerdict = verdict;
+    return { verdict, sky: s, clarity: clarity(s, when), replay: info, event: null, mock: true,
+      indoor: { air: null, light: null, baseline: null, rate_per_min: Math.round(rate), stale_index: idx, warming_up: false },
       wind_compass: compass(s.wind_dir), sky_age_min: Math.round((now - fetchedAt) / 6000) / 10, voice_enabled: false,
       last_report: null, showcase: true };
   }
@@ -285,8 +318,9 @@ const LocalSky = (() => {
   }
 
   return {
-    state, report, smokeDay, compass, skyAt, worldNow, aqiCategory, likelyCause, describeWeather, aqiGrid, surroundings,
+    state, report, smokeDay, compass, skyAt, worldNow, aqiCategory, likelyCause, describeWeather, aqiGrid, surroundings, solarElevation,
     verdictFor: (s) => decide(0, 0, s), // outdoor-only verdict, used by the replay scrubber
+    decide, // full verdict: decide(idx, ratePerMin, sky, {fires, prev}), same rules as server/decide.py
     spike() { spikeUntil = Date.now() + 20000; },
     async startReplay() { const d = await smokeDay(); replay = { hours: d.hours, start: Date.now() }; },
     stopReplay() { replay = null; },

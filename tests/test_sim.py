@@ -96,5 +96,5 @@ def test_scenario_switch_resets_smoothing_once():
 def test_feed_labels_identify_the_source_without_the_word_simulated():
     assert scenarios.SimSensors.feed == "backup"
     assert getattr(hw.PiSensors, "feed", "pi") == "pi"  # the Pi backend's default
-    web = (ROOT / "web" / "app.js").read_text(encoding="utf-8") + (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    web = "".join((ROOT / "web" / f).read_text(encoding="utf-8") for f in ("app/app.js", "app/local.js", "app.html"))
     assert "BACKUP FEED" in web and not re.search(r"simulat", web, re.I)

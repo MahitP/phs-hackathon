@@ -1,0 +1,45 @@
+/* The shell between the story and the app: which side shows, the rewind's tape counter, the veil for
+   reduced motion, and the sound mix panel (opened from the story's header). */
+html { scrollbar-gutter: stable; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* in the app the story's chrome steps aside; its canvas stops rendering and hides (the hand-off shows it again) */
+html[data-mode="app"] { overflow: hidden; }
+html[data-mode="app"] .bar, html[data-mode="app"] .skip, html[data-mode="app"] #labels, html[data-mode="app"] .scrim,
+html[data-mode="app"] #story, html[data-mode="app"] #loader { visibility: hidden; }
+html[data-mode="app"]:not([data-handoff]) #stage { visibility: hidden; }
+html[data-handoff] #story { pointer-events: none; }
+/* the header steps aside at once (its own transition has a 0.9 s entrance delay, which brings it back gently after Back) */
+html[data-handoff] .bar { opacity: 0; pointer-events: none; transition: opacity .25s ease; }
+html[data-handoff] #labels { visibility: hidden; }
+/* cold start in the app (app.html): no story behind it */
+html[data-app-cold] #stage, html[data-app-cold] #loader, html[data-app-cold] .bar { display: none; }
+html[data-app-cold] { background: #000; }
+
+#veil { position: fixed; inset: 0; z-index: 60; background: #000; opacity: 0; pointer-events: none; }
+
+/* ---------- the rewind: a tape deck's counter over the picture ---------- */
+.rw { position: fixed; z-index: 45; left: clamp(16px, 3.4vw, 48px); top: clamp(84px, 11vh, 112px); margin: 0; pointer-events: none;
+  font-family: "JetBrains Mono", ui-monospace, monospace; color: #F2F3F0; text-shadow: 0 0 2px rgba(0, 0, 0, .8), 0 0 18px rgba(0, 0, 0, .45);
+  font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+.rw p { margin: 0; }
+.rw-mode { display: flex; align-items: baseline; gap: 14px; font-size: clamp(22px, 2.6vw, 34px); font-weight: 600; }
+.rw-glyph { letter-spacing: -.12em; }
+.rw[data-state="rew"] .rw-glyph { animation: rw-blink 0.9s steps(2, jump-none) infinite; }
+.rw-count { margin-top: 8px !important; font-size: clamp(15px, 1.5vw, 19px); opacity: .92; }
+.rw-ch { margin-top: 6px !important; font-size: clamp(12px, 1.1vw, 14px); letter-spacing: .14em; text-transform: uppercase; opacity: .72; min-height: 1.2em; }
+.rw[data-state="link"] .rw-mode { font-size: clamp(16px, 1.7vw, 22px); }
+@keyframes rw-blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .rw[data-state="rew"] .rw-glyph { animation: none; } }
+
+/* ---------- sound mix panel ---------- */
+.sound-mix { padding-left: 10px; padding-right: 10px; }
+.sound-mix svg circle { fill: var(--white); }
+.sound-pop { position: fixed; z-index: 70; width: 280px; padding: 16px 18px 14px; background: var(--white); color: var(--ink);
+  box-shadow: 0 0 0 2px var(--rail), 0 12px 32px rgba(28, 32, 36, .14); font-size: 14px; }
+.sound-pop-title { margin: 0 0 10px; font-size: 16px; font-weight: 680; }
+.sound-row { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 12px; min-height: 36px; font-weight: 560; }
+.sound-row input { width: 100%; accent-color: var(--ink); }
+.sound-check { display: flex; align-items: center; gap: 10px; min-height: 40px; margin-top: 4px; }
+.sound-check input { width: 18px; height: 18px; accent-color: var(--ink); }
+.sound-note { margin: 6px 0 0; font-size: 13px; color: var(--slate); }

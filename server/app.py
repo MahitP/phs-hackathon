@@ -220,9 +220,10 @@ writes = [Depends(require_token)]
 @app.middleware("http")
 async def revalidate_site_files(request, call_next):
     """Make browsers re-check our own HTML/JS/CSS on every load so an updated Pi never serves a
-    stale mix of old and new files; the large vendor/ bundle may still be cached."""
+    stale mix of old and new files; the large vendor/ and assets/ bundles (libraries, textures,
+    sound) may still be cached."""
     response = await call_next(request)
-    if not request.url.path.startswith(("/api", "/vendor/")):
+    if not request.url.path.startswith(("/api", "/vendor/", "/assets/")):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
