@@ -1,6 +1,8 @@
 # ☁️ SkyWindow: *Should I let the sky in?*
 
-**hackPHS 2026 · Theme: "Into the Skies"**
+**hackPHS 2026 · Theme: "Into the Skies"** · Built by Mahit's Team
+
+**Try it:** https://mahitp.github.io/phs-hackathon/ (showcase mode: the live sky over Princeton High School and a simulated room sensor, no Raspberry Pi needed). It's published from `main` by `.github/workflows/pages.yml` on every push.
 
 On **June 7, 2023**, wildfire smoke from Canada turned Princeton's sky orange. That day, opening a window was the worst thing you could do. On most other days, opening a window is the best thing you can do for a stuffy room.
 
