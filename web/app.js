@@ -72,16 +72,18 @@ function selectTab(name) {
   if (!selectTab.keepView) showScene(name);
   selectTab.keepView = false;
   if (name === "replay") loadReplay();
-  if (name !== "explore" && explored) { explored = null; Globe.hidePin(); Globe.flyTo(Globe.HOME.lat, Globe.HOME.lon); }
+  if (name !== "explore" && explored) { explored = null; Globe.hidePin(); }
   if (name === "sky") { renderForecast.key = null; renderForecast(latest && latest.sky); refreshHistory(); }
   if (name !== "replay" && name !== "explore" && latest) applySky(latest);
 }
 
 // ---------- scenes: close-up map (NOW = city, LOCAL = school) or the 3D globe ----------
-const MAP_VIEWS = { now: "city", local: "school" };
+const MAP_VIEWS = { now: "city", local: "school", replay: "nj" }; // everything else shows the globe
+const GLOBE_REGION_TABS = ["sky", "explore"];
 let sceneIsMap = false;
 function showScene(name, plunge = false) {
   const view = MAP_VIEWS[name];
+  gsap.killTweensOf(["#globe", "#localmap"]); // a pending fade from the previous scene must not land after this one
   if (view) {
     LocalMap.init($("localmap"));
     if (!sceneIsMap) {
@@ -94,11 +96,19 @@ function showScene(name, plunge = false) {
     }
     LocalMap.view(view);
     loadFires();
-  } else if (sceneIsMap) {
-    sceneIsMap = false;
-    gsap.to("#localmap", { opacity: 0, duration: 0.5, onComplete: () => ($("localmap").hidden = true) });
-    gsap.to("#globe", { opacity: 1, duration: 0.6 });
+  } else {
+    if (sceneIsMap) {
+      sceneIsMap = false;
+      Globe.resetZoom(); // undo the intro plunge in case its fade was cancelled mid-way
+      LocalMap.view("city", false); // releases the NJ lock if it was on
+      gsap.to("#localmap", { opacity: 0, duration: 0.5, onComplete: () => ($("localmap").hidden = true) });
+      gsap.to("#globe", { opacity: 1, duration: 0.6 });
+    }
+    // closer, centred view of a region; default to North America the first time
+    if (GLOBE_REGION_TABS.includes(name) && !explored) focusRegion(showScene.region || "44,-98,2.6");
+    if (name === "system") Globe.flyTo(Globe.HOME.lat, Globe.HOME.lon, 1.6, 2.4);
   }
+  $("regions").hidden = !GLOBE_REGION_TABS.includes(name);
 }
 
 // ---------- live render ----------
@@ -160,7 +170,7 @@ function render(s) {
   $("po-cat").style.setProperty("--c", cat.color);
   $("po-wx").textContent = `${w.icon} ${w.text} ${fmt(sky.temperature, 0, "°C")}`;
   $("po-wind").textContent = $("wx-wind").textContent;
-  LocalMap.updateDevice({ color: v.color, verdict: v.label, mock: s.mock || !serverMode,
+  if (activeTab !== "replay") LocalMap.updateDevice({ color: v.color, verdict: v.label, mock: s.mock || !serverMode,
     inside: ind.warming_up ? "WARMING UP" : `STALE ${fmt(ind.stale_index)}/100 ${ind.rate_per_min > 0 ? "▲" : ind.rate_per_min < 0 ? "▼" : "•"}`,
     aqi: fmt(sky.us_aqi), cat: cat.short || cat.label, catColor: cat.color, weather: `${w.icon} ${fmt(sky.temperature, 0, "°C")}` });
 
@@ -322,6 +332,10 @@ function showHour(i) {
   $("r-verdict").style.color = v.color;
   document.querySelectorAll("#scrub-bars div").forEach((d, j) => d.classList.toggle("on", j <= i));
   Globe.setSky({ haze: hazeOf(h), wind: h.wind_speed, night: i < 6 || i > 20, cloud: h.cloud_cover });
+  LocalMap.setSmoke(hazeOf(h));
+  const hc = LocalSky.aqiCategory(h.us_aqi);
+  LocalMap.updateDevice({ color: v.color, verdict: v.label, mock: false, insideLabel: "JUNE 7, 2023", inside: h.time.slice(11, 16),
+    aqi: fmt(h.us_aqi), cat: hc.short || hc.label, catColor: hc.color, weather: `${fmt(h.temperature, 0, "°C")} · WIND ${LocalSky.compass(h.wind_dir)}` });
   Globe.setVerdictColor(v.color);
   SkyAudio.setSky({ wind: h.wind_speed, haze: hazeOf(h) });
 }
@@ -535,11 +549,13 @@ async function loadWorld() {
 }
 setInterval(loadWorld, 600000);
 
-document.querySelectorAll("[data-region]").forEach((b) => (b.onclick = () => {
-  const [lat, lon] = b.dataset.region.split(",").map(Number);
-  document.querySelectorAll("[data-region]").forEach((x) => x.classList.toggle("on", x === b));
-  Globe.flyTo(lat, lon);
-}));
+function focusRegion(spec) {
+  showScene.region = spec;
+  const [lat, lon, dist] = spec.split(",").map(Number);
+  document.querySelectorAll("[data-region]").forEach((x) => x.classList.toggle("on", x.dataset.region === spec));
+  Globe.flyTo(lat, lon, 1.6, dist);
+}
+document.querySelectorAll("[data-region]").forEach((b) => (b.onclick = () => focusRegion(b.dataset.region)));
 
 Globe.onPick((lat, lon) => { if (!$("hud").hidden) explore(lat, lon); });
 document.querySelectorAll("[data-place]").forEach((b) => (b.onclick = () => {

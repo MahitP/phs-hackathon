@@ -66,7 +66,7 @@ const Globe = (() => {
     };
     setTimeout(() => resolveReady(false), 10000); // never block the splash on a slow network
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.62)); // keeps the night side readable while still showing day/night
 
     earth = new THREE.Group();
     earthMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), new THREE.MeshPhongMaterial({
@@ -221,15 +221,31 @@ const Globe = (() => {
   function hidePin() { pin.visible = pinRing.visible = false; }
 
   /** Rotate the globe so (lat, lon) faces the camera. */
-  function flyTo(lat, lon, duration = 1.6) {
+  function flyTo(lat, lon, duration = 1.6, dist = null) {
     const targetY = Math.PI / 2 - (lon + 180) * Math.PI / 180;
     gsap.killTweensOf(rot); // a new destination always wins over an unfinished flight
     rot.y = earth.rotation.y; rot.x = earth.rotation.x;
     const wrapped = rot.y + ((((targetY - rot.y) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
     velX = velY = 0;
-    gsap.to(rot, { y: wrapped, x: Math.max(-1, Math.min(1, lat * Math.PI / 180 * 0.85)), duration, ease: "power3.inOut",
+    // rotation.y brings the longitude to the front, rotation.x = latitude tilts it to the exact centre
+    gsap.to(rot, { y: wrapped, x: lat * Math.PI / 180, duration, ease: "power3.inOut",
       onUpdate: () => { earth.rotation.y = rot.y; earth.rotation.x = rot.x; } });
+    if (dist) setDistance(dist, duration);
   }
+
+  // Camera always sits on the axis looking straight at the globe, so a focused region is never
+  // seen at an angle. To leave room for the panel we shift the *rendered image* (view offset).
+  function setDistance(z, duration = 1.6) {
+    gsap.to(camera.position, { x: 0, y: 0, z, duration, ease: "power3.inOut", onUpdate: () => camera.lookAt(0, 0, 0) });
+  }
+  let shift = 0; // px the globe is pushed right
+  function setShift(px) {
+    shift = px;
+    if (px) camera.setViewOffset(innerWidth, innerHeight, -px, 0, innerWidth, innerHeight);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+  }
+  function panelShift() { return innerWidth > 900 ? Math.min(640, innerWidth * 0.46) / 2 : 0; }
 
   // live air-quality dots for world cities (size + color = EPA category)
   let cityGroup = null;
@@ -256,14 +272,16 @@ const Globe = (() => {
   }
 
   // orbit (hero) view: on wide screens push the globe right so the headline has room
-  function orbitPos() { return innerWidth > 900 ? { x: -1.9, y: 0.5, z: 6.2, lx: -1.6 } : { x: 0, y: 0.9, z: 7.2, lx: 0 }; }
-  function orbitView() { const o = orbitPos(); camera.position.set(o.x, o.y, o.z); camera.lookAt(o.lx, 0, 0); }
+  function orbitView() {
+    camera.position.set(0, 0, innerWidth > 900 ? 6.2 : 7.2); camera.lookAt(0, 0, 0);
+    setShift(innerWidth > 900 ? innerWidth * 0.2 : 0);
+  }
 
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    if (!focused && camera.position.z > 5) orbitView();
+    if (!focused && camera.position.z > 5) orbitView(); else setShift(panelShift());
   }
 
   function tick(t) {
@@ -288,17 +306,15 @@ const Globe = (() => {
   /** Fly from orbit down to a view over Princeton. */
   function focusHome(duration = 2.6) {
     focused = true;
-    flyTo(LAT, LON, duration);
-    // wide screens: globe sits on the right, panels on the left
-    const wide = innerWidth > 900, side = wide ? -1.15 : 0;
-    gsap.to(camera.position, { x: side, y: 0.1, z: wide ? 3.4 : 3.9, duration, ease: "power3.inOut", onUpdate: () => camera.lookAt(side * 0.85, wide ? 0 : -0.35, 0) });
+    gsap.to({ s: shift }, { s: panelShift(), duration, ease: "power3.inOut", onUpdate() { setShift(this.targets()[0].s); } });
+    flyTo(LAT, LON, duration, innerWidth > 900 ? 2.4 : 3.2);
   }
 
   function release() {
     focused = false;
     velX = 0.0012; velY = 0;
-    const o = orbitPos();
-    gsap.to(camera.position, { x: o.x, y: o.y, z: o.z, duration: 2, ease: "power2.inOut", onUpdate: () => camera.lookAt(o.lx, 0, 0) });
+    gsap.to({ s: shift }, { s: innerWidth > 900 ? innerWidth * 0.2 : 0, duration: 2, onUpdate() { setShift(this.targets()[0].s); } });
+    setDistance(innerWidth > 900 ? 6.2 : 7.2, 2);
   }
 
   /** haze 0..1 tints the atmosphere and fades in the aerosol layer; cloud % drives cloud opacity. */
@@ -318,6 +334,6 @@ const Globe = (() => {
     ring.material.color.set(hex);
   }
 
-  return { init, focusHome, release, setSky, setVerdictColor, flyTo, dropPin, hidePin, setCities, plunge, resetZoom,
+  return { init, focusHome, release, setSky, setVerdictColor, flyTo, setDistance, dropPin, hidePin, setCities, plunge, resetZoom,
     onPick: (cb) => (pickHandler = cb), HOME: { lat: LAT, lon: LON } };
 })();

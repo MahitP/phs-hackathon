@@ -35,7 +35,7 @@ const LocalMap = (() => {
     }).addTo(map);
     deviceMarker.bindTooltip("SkyWindow · Princeton High School", { permanent: true, direction: "right", offset: [14, 0], className: "device-tip" });
 
-    map.on("click", (e) => analyze(e.latlng.lat, e.latlng.lng));
+    map.on("click", (e) => { if (!locked) analyze(e.latlng.lat, e.latlng.lng); });
   }
 
   /** Live device card next to the PHS marker: inside (Raspberry Pi) vs outside. */
@@ -46,7 +46,7 @@ const LocalMap = (() => {
     deviceMarker.setTooltipContent(
       `<div class="dt-title">SKYWINDOW · PHS</div>` +
       `<div class="dt-verdict" style="color:${d.color}">${d.verdict}</div>` +
-      `<div class="dt-row"><span>INSIDE ${d.mock ? "(SIMULATED)" : "(RASPBERRY PI)"}</span><b>${d.inside}</b></div>` +
+      `<div class="dt-row"><span>${d.insideLabel || "INSIDE " + (d.mock ? "(SIMULATED)" : "(RASPBERRY PI)")}</span><b>${d.inside}</b></div>` +
       `<div class="dt-row"><span>OUTSIDE AQI</span><b style="color:${d.catColor}">${d.aqi} ${d.cat}</b></div>` +
       `<div class="dt-row"><span>WEATHER</span><b>${d.weather}</b></div>`);
   }
@@ -88,9 +88,32 @@ const LocalMap = (() => {
   function padding() { return innerWidth > 900 ? [Math.min(620, innerWidth * 0.45), 60] : [0, 60]; }
   function bottomPad() { return innerWidth > 900 ? [20, 40] : [20, innerHeight * 0.5]; } // phone: panel docked at bottom
 
-  /** Fly to a view of PHS: "city" (Princeton, ~zoom 13) or "school" (the building, ~zoom 17). */
+  // 2023 RECORD is locked to Princeton and the surrounding New Jersey area
+  const NJ = L.latLngBounds([38.9, -75.6], [41.4, -73.85]);
+  let smoke = null, locked = false;
+  function lockNJ(on) {
+    if (on === locked) return;
+    locked = on;
+    if (on) {
+      map.fitBounds(NJ, { paddingTopLeft: padding(), paddingBottomRight: bottomPad() });
+      map.setMinZoom(map.getZoom());
+      map.setMaxBounds(NJ.pad(0.15));
+      smoke = smoke || L.rectangle(NJ.pad(4), { stroke: false, fillColor: "#ff7a2e", fillOpacity: 0, interactive: false });
+      smoke.addTo(map);
+    } else {
+      map.setMaxBounds(null);
+      map.setMinZoom(0);
+      if (smoke) map.removeLayer(smoke);
+    }
+  }
+  /** Smoke haze over NJ for the replayed hour: 0..1 */
+  function setSmoke(level) { if (smoke) smoke.setStyle({ fillOpacity: Math.min(0.55, level * 0.6) }); }
+
+  /** Fly to a view of PHS: "city" (Princeton, ~zoom 13), "school" (the building, ~zoom 17) or "nj" (locked state view). */
   function view(kind, fly = true) {
     map.invalidateSize();
+    lockNJ(kind === "nj");
+    if (kind === "nj") return;
     const radius = kind === "school" ? 300 : 1800; // metres around PHS kept in view
     const opts = { paddingTopLeft: padding(), paddingBottomRight: bottomPad(), maxZoom: kind === "school" ? 18 : 15 };
     const b = L.latLng(PHS).toBounds(radius * 2);
@@ -108,6 +131,6 @@ const LocalMap = (() => {
     on ? l.addTo(map) : map.removeLayer(l);
   }
 
-  return { init, view, setBase, updateDevice, setFires, analyze, setPickColor, toggle,
+  return { init, view, setBase, updateDevice, setFires, analyze, setPickColor, toggle, setSmoke, isLocked: () => locked,
     onAnalyze: (cb) => (onAnalyze = cb), invalidate: () => ready && map.invalidateSize(), PHS };
 })();

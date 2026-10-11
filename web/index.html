@@ -8,7 +8,7 @@
   <!-- Libraries, fonts and Earth textures are bundled in vendor/ so the site works without internet (see vendor/README.md) -->
   <link rel="stylesheet" href="vendor/fonts/fonts.css">
   <link rel="stylesheet" href="vendor/leaflet.min.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=5">
   <script src="vendor/three.min.js"></script>
   <script src="vendor/gsap.min.js"></script>
   <script src="vendor/chart.umd.min.js"></script>
@@ -271,15 +271,6 @@
         <div class="scope global mono">🌍 GLOBAL VIEW · ATMOSPHERIC MODEL · <span id="world-time">LOADING…</span></div>
         <h2>The air across the planet</h2>
         <p>Each dot is a major city, colored by the official U.S. EPA category. Scroll to zoom, drag to spin, and tap anywhere to compare that place with PHS.</p>
-        <div class="row" id="regions">
-          <button class="ghost small" data-region="45,-100">N. AMERICA</button>
-          <button class="ghost small" data-region="-15,-60">S. AMERICA</button>
-          <button class="ghost small" data-region="50,12">EUROPE</button>
-          <button class="ghost small" data-region="5,20">AFRICA</button>
-          <button class="ghost small" data-region="28,80">S. ASIA</button>
-          <button class="ghost small" data-region="35,115">E. ASIA</button>
-          <button class="ghost small" data-region="-25,135">OCEANIA</button>
-        </div>
         <div class="mono label mt">HOW THE WORLD'S CITIES ARE BREATHING</div>
         <div id="dist-bar" class="dist-bar"></div>
         <div id="dist-legend" class="legend mono"></div>
@@ -309,6 +300,19 @@
       </section>
     </main>
 
+    <div id="regions" class="regions mono" role="group" aria-label="Focus the globe on a region" hidden>
+      <span class="label">FOCUS</span>
+      <button data-region="40.3587,-74.656,1.7">PRINCETON</button>
+      <button data-region="44,-98,2.6">N. AMERICA</button>
+      <button data-region="-17,-60,2.6">S. AMERICA</button>
+      <button data-region="51,12,2.3">EUROPE</button>
+      <button data-region="3,20,2.7">AFRICA</button>
+      <button data-region="27,46,2.3">MIDDLE EAST</button>
+      <button data-region="22,80,2.3">S. ASIA</button>
+      <button data-region="34,113,2.4">E. ASIA</button>
+      <button data-region="-26,135,2.5">OCEANIA</button>
+    </div>
+
     <footer class="hud-foot mono">
       <span id="foot-coords">40.3587°N 74.6560°W</span>
       <span id="foot-ticker"></span>
@@ -316,10 +320,10 @@
     </footer>
   </div>
 
-  <script src="globe.js"></script>
-  <script src="audio.js"></script>
-  <script src="sky-local.js"></script>
-  <script src="local.js"></script>
-  <script src="app.js"></script>
+  <script src="globe.js?v=5"></script>
+  <script src="audio.js?v=5"></script>
+  <script src="sky-local.js?v=5"></script>
+  <script src="local.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

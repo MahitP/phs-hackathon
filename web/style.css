@@ -213,3 +213,13 @@ code { font-family: var(--mono); font-size: 0.85em; background: rgba(255,255,255
 .compare td { padding: 6px; border-top: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
 .compare td:first-child { text-align: left; color: var(--muted); font-size: 0.6rem; letter-spacing: .1em; }
 .compare td.worse { color: #fca5a5; } .compare td.better { color: #86efac; }
+
+/* region focus bar over the globe (EARTH + FORECAST) */
+.regions { position: fixed; z-index: 6; right: clamp(16px, 3vw, 32px); bottom: 48px; display: flex; flex-wrap: wrap; gap: 4px;
+  justify-content: flex-end; max-width: min(560px, 50vw); pointer-events: auto; }
+.regions .label { width: 100%; text-align: right; font-size: 0.58rem; color: var(--muted); }
+.regions button { background: rgba(6,10,18,.7); border: 1px solid var(--line); color: var(--muted); font: inherit; font-size: 0.62rem;
+  letter-spacing: .1em; padding: 6px 10px; backdrop-filter: blur(6px); }
+.regions button:hover, .regions button.on { color: var(--ink); border-color: var(--ink); }
+@media (max-width: 900px) { .regions { left: 16px; right: 16px; max-width: none; justify-content: flex-start; bottom: auto; top: 96px; }
+  .regions .label { display: none; } }
