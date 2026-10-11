@@ -2,9 +2,12 @@
 
 The separation rules: the Pi backend never imports the simulator, never falls back to made-up sensor
 readings, and doesn't expose scenario controls. Every scenario must produce the verdict it promises."""
+import random
 import re
 import time
 from pathlib import Path
+
+import pytest
 
 from device import hw
 from server.decide import decide
@@ -42,6 +45,11 @@ def test_pi_backend_has_no_scenario_controls():
 
 # ---------- room physics + presets ----------
 from simulator.room import RoomModel  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _repeatable_sensor_noise():
+    random.seed(2026)  # the room model adds Gaussian ADC noise; a fixed seed keeps these physics checks repeatable
 
 
 def room_at(co2=650.0, mode="class"):
@@ -162,7 +170,7 @@ def server_trend(room, seconds, flip=None):
         room.last -= 1
         win.append((t, trend.adjust(smooth.update(room.read_air()))))
         win = [w for w in win if t - w[0] <= 20]
-        if t - win[0][0] >= 10:
+        if t >= 30 and t - win[0][0] >= 10:          # after the smoothing has settled on real readings
             worst = max(worst, (win[-1][1] - win[0][1]) / ((t - win[0][0]) / 60))
     return worst
 
