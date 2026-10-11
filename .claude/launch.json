@@ -3,13 +3,13 @@
   "configurations": [
     {
       "name": "skywindow-mock",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["scripts/dev.py"],
       "port": 8000
     },
     {
       "name": "skywindow-showcase",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["-m", "http.server", "8090", "--directory", "web"],
       "port": 8090
     }

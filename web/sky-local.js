@@ -81,13 +81,14 @@ const LocalSky = (() => {
 
   /** Official U.S. EPA AQI categories. */
   function aqiCategory(aqi) {
-    if (aqi == null) return { label: "NO DATA", color: "#8b95a7", level: -1 };
-    if (aqi <= 50) return { label: "GOOD", color: "#22c55e", level: 0 };
-    if (aqi <= 100) return { label: "MODERATE", color: "#eab308", level: 1 };
-    if (aqi <= 150) return { label: "UNHEALTHY FOR SENSITIVE GROUPS", short: "SENSITIVE", color: "#f97316", level: 2 };
-    if (aqi <= 200) return { label: "UNHEALTHY", color: "#ef4444", level: 3 };
-    if (aqi <= 300) return { label: "VERY UNHEALTHY", color: "#a855f7", level: 4 };
-    return { label: "HAZARDOUS", color: "#9f1239", level: 5 };
+    // colors: the EPA category fills used across the dashboard's data bars and globe dots
+    if (aqi == null) return { label: "NO DATA", color: "#5B636B", level: -1 };
+    if (aqi <= 50) return { label: "GOOD", color: "#4AA969", level: 0 };
+    if (aqi <= 100) return { label: "MODERATE", color: "#E5C14A", level: 1 };
+    if (aqi <= 150) return { label: "UNHEALTHY FOR SENSITIVE GROUPS", short: "SENSITIVE", color: "#E48233", level: 2 };
+    if (aqi <= 200) return { label: "UNHEALTHY", color: "#C44134", level: 3 };
+    if (aqi <= 300) return { label: "VERY UNHEALTHY", color: "#733893", level: 4 };
+    return { label: "HAZARDOUS", color: "#6A1D30", level: 5 };
   }
 
   /** Best guess at what is dirtying the air, from the same model data. */
@@ -283,7 +284,7 @@ const LocalSky = (() => {
   }
 
   return {
-    state, report, smokeDay, compass, skyAt, worldNow, aqiCategory, likelyCause, describeWeather, aqiGrid, surroundings,
+    state, report, smokeDay, compass, skyAt, worldNow, aqiCategory, likelyCause, describeWeather, aqiGrid, surroundings, solarElevation,
     verdictFor: (s) => decide(0, 0, s), // outdoor-only verdict, used by the replay scrubber
     spike() { spikeUntil = Date.now() + 20000; },
     async startReplay() { const d = await smokeDay(); replay = { hours: d.hours, start: Date.now() }; },

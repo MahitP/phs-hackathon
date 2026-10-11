@@ -15,7 +15,8 @@ const Globe = (() => {
   const raycaster = new THREE.Raycaster(), pointer = new THREE.Vector2();
   let focused = false, dragging = false, lastX = 0, lastY = 0, velX = 0.0012, velY = 0;
   let windSpeed = 8, hazeLevel = 0;
-  const clearBlue = new THREE.Color("#5b9dff"), smoke = new THREE.Color("#ff7a2e");
+  const clearBlue = new THREE.Color("#5b9dff"), smoke = new THREE.Color("#DD7B2B");
+  let frame = null; // {cx, cy}: where the page wants the globe's centre on screen (inside the window panes)
 
   function latLon(lat, lon, r) {
     const phi = (90 - lat) * Math.PI / 180, theta = (lon + 180) * Math.PI / 180;
@@ -262,6 +263,7 @@ const Globe = (() => {
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
     camera.aspect = innerWidth / innerHeight;
+    applyFrame();
     camera.updateProjectionMatrix();
     if (!focused && camera.position.z > 5) orbitView();
   }
@@ -301,6 +303,30 @@ const Globe = (() => {
     gsap.to(camera.position, { x: o.x, y: o.y, z: o.z, duration: 2, ease: "power2.inOut", onUpdate: () => camera.lookAt(o.lx, 0, 0) });
   }
 
+  /** Shift the projection so the globe's centre lands on frame.cx/cy; raycast picking stays correct. */
+  function applyFrame() {
+    if (!camera) return;
+    if (!frame) camera.clearViewOffset();
+    else camera.setViewOffset(innerWidth, innerHeight, innerWidth / 2 - frame.cx, innerHeight / 2 - frame.cy, innerWidth, innerHeight);
+  }
+
+  /** Place the globe with its centre at screen point (cx, cy) and an apparent radius of r px. */
+  function frameAt(cx, cy, r, duration = 1.4) {
+    focused = true;
+    const a = Math.atan(r * Math.tan(camera.fov * Math.PI / 360) / (innerHeight / 2)), dist = 1 / Math.sin(a);
+    const start = frame || { cx: innerWidth / 2, cy: innerHeight / 2 };
+    frame = { cx: start.cx, cy: start.cy };
+    gsap.killTweensOf(camera.position); gsap.killTweensOf(camera);
+    const update = () => { camera.lookAt(0, 0, 0); applyFrame(); camera.updateProjectionMatrix(); };
+    if (reduceMotion || !duration) { camera.position.set(0, 0, dist); camera.zoom = 1; frame.cx = cx; frame.cy = cy; update(); return; }
+    gsap.to(camera.position, { x: 0, y: 0, z: dist, duration, ease: "power3.inOut", onUpdate: update });
+    gsap.to(camera, { zoom: 1, duration, ease: "power3.inOut" });
+    gsap.to(frame, { cx, cy, duration, ease: "power3.inOut", onUpdate: update });
+  }
+
+  /** Render only while the globe is on screen. */
+  function setActive(on) { if (renderer) renderer.setAnimationLoop(on ? tick : null); }
+
   /** haze 0..1 tints the atmosphere and fades in the aerosol layer; cloud % drives cloud opacity. */
   function setSky({ haze = 0, wind = 8, night = false, cloud = null }) {
     hazeLevel = Math.max(0, Math.min(1, haze));
@@ -318,6 +344,6 @@ const Globe = (() => {
     ring.material.color.set(hex);
   }
 
-  return { init, focusHome, release, setSky, setVerdictColor, flyTo, dropPin, hidePin, setCities, plunge, resetZoom,
+  return { init, focusHome, release, setSky, setVerdictColor, flyTo, dropPin, hidePin, setCities, plunge, resetZoom, frameAt, setActive,
     onPick: (cb) => (pickHandler = cb), HOME: { lat: LAT, lon: LON } };
 })();

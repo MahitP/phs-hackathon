@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkyWindow</title>
+  <meta name="description" content="SkyWindow sits on a windowsill at Princeton High School. It reads the sky outside and the air in the room, then tells every classroom whether to open the window.">
+  <meta name="theme-color" content="#F2F3F0">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' fill='%23F2F3F0'/%3E%3Cg fill='none' stroke='%231C2024' stroke-width='1.75'%3E%3Crect x='3.5' y='2.5' width='13' height='15'/%3E%3Cpath d='M3.5 10.5h13M10 2.5v15'/%3E%3C/g%3E%3C/svg%3E">
+  <!-- Libraries, the Archivo font and Earth textures are bundled in vendor/ so the page works without internet (see vendor/README.md) -->
+  <link rel="stylesheet" href="vendor/fonts/archivo.css">
+  <link rel="stylesheet" href="vendor/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/gsap.min.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="vendor/leaflet.min.js"></script>
+</head>
+<body class="is-loading" data-screen="now" data-scene="sky">
+  <a class="skip" href="#main">Skip to the answer</a>
+
+  <!-- What is seen through the window: one full-viewport layer behind the frame. Only one is shown at a time. -->
+  <div id="scene" aria-hidden="true">
+    <div id="sky" class="scene-layer on"><div id="sky-a" class="sky-layer"></div><div id="sky-b" class="sky-layer"></div></div>
+    <div id="localmap" class="scene-layer" aria-label="Map of the area around Princeton High School"></div>
+    <canvas id="globe" class="scene-layer" aria-label="Globe showing the air over major cities"></canvas>
+  </div>
+
+  <!-- Banners: real alerts, the 2023 replay and connection problems -->
+  <div id="banners">
+    <div id="replay-banner" class="banner b-smoke" role="status" hidden>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.25"/><path d="M10 6v4.25l2.75 1.75"/></svg>
+      <p id="replay-banner-text">Replaying June 7, 2023. This is recorded data, not today's air.</p>
+      <span class="grow"></span>
+      <span id="replay-banner-hour" class="tabnum"></span>
+      <button type="button" id="btn-stop-replay" class="btn btn-dark btn-sm">Stop replay</button>
+    </div>
+    <div id="story-banner" class="banner b-smoke" hidden>
+      <p><b>June 7, 2023.</b> Recorded data, not today's air.</p>
+      <span class="grow"></span>
+      <button type="button" class="link" data-go="now">Back to now</button>
+    </div>
+    <div id="alert" class="banner b-alert" role="alert" hidden></div>
+    <div id="offline" class="banner b-offline" role="status" hidden>
+      <p><b>No connection.</b> <span id="offline-text">Showing the last reading.</span></p>
+    </div>
+  </div>
+
+  <!-- The window: head rail, upper sash, meeting rail, lower sash, sill and the two rulers -->
+  <div id="hud">
+    <header class="head">
+      <a class="brand" id="btn-orbit" href="app.html" title="Back to the window">
+        <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3.5" y="2.5" width="13" height="15"/><path d="M3.5 10.5h13M10 2.5v15"/></svg>
+        <span>SkyWindow</span>
+      </a>
+      <div class="place">
+        <span class="place-name" data-show="now local replay sky">Princeton High School</span>
+        <span class="muted tabnum" data-show="now local replay">40.36° N, 74.66° W</span>
+        <span class="muted" id="fc-from" data-show="sky">Forecast for the next 24 hours</span>
+        <span class="place-name" data-show="explore"><span id="world-count">Major cities</span>, air model</span>
+        <span class="muted" id="world-time" data-show="explore">Loading the world's air</span>
+      </div>
+      <span class="grow"></span>
+      <p class="status" data-show="now local replay"><span class="dot" id="status-dot"></span><span id="mode-chip">Checking the sky over PHS</span> <span id="clock"></span></p>
+      <button type="button" role="tab" data-tab="system" id="tab-btn-system" class="head-link" aria-selected="false" aria-controls="tab-system" tabindex="0" data-show="now local explore sky replay">How it works</button>
+      <button type="button" class="head-link" data-go="now" data-show="system">Back to the window</button>
+      <a class="head-link head-story" href="index.html">Watch the story</a>
+      <button type="button" id="btn-sound" class="btn btn-ghost btn-sound" aria-pressed="false" data-show="now local explore sky replay">
+        <svg class="i-off" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"/><path d="M13.5 8l4 4M17.5 8l-4 4"/></svg>
+        <svg class="i-on" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"/><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"/></svg>
+        <span class="sound-text">Sound off</span>
+      </button>
+    </header>
+
+    <!-- upper sash: the panes are holes in the frame, the scene shows through -->
+    <div class="upper" data-show="now local explore sky replay">
+      <div class="panes" id="upper-panes">
+        <div class="pane" id="pane-0"><p class="cap" id="cap-0"></p></div>
+        <div class="bar" aria-hidden="true"></div>
+        <div class="pane" id="pane-1"><p class="cap" id="cap-1"></p></div>
+        <div class="bar bar-3" aria-hidden="true"></div>
+        <div class="pane pane-3" id="pane-2"><p class="cap" id="cap-2"></p></div>
+      </div>
+      <svg class="wind-lines" id="wind-lines" aria-hidden="true" width="100%" height="100%">
+        <defs><pattern id="wind-pattern" width="220" height="64" patternUnits="userSpaceOnUse">
+          <g stroke="#FFFFFF" stroke-linecap="round" fill="none" stroke-width="1.25">
+            <path d="M12 10h46" stroke-opacity=".55"/><path d="M118 26h36" stroke-opacity=".4"/><path d="M64 44h52" stroke-opacity=".5"/><path d="M170 56h34" stroke-opacity=".35"/>
+          </g>
+        </pattern></defs>
+        <rect width="100%" height="100%" fill="url(#wind-pattern)"/>
+      </svg>
+    </div>
+
+    <!-- meeting rail: one panel per view -->
+    <main class="rail" id="main" data-show="now local explore sky replay">
+      <section class="panel rail-now" id="tab-now" role="tabpanel" aria-labelledby="tab-btn-window">
+        <div class="skel-verdict" aria-hidden="true"><span class="sk sk-word"></span><span class="sk-lines"><span class="sk sk-line"></span><span class="sk sk-line short"></span></span></div>
+        <div class="verdict-error">
+          <p class="err-title">No verdict yet.</p>
+          <p class="err-text" id="err-text">Open-Meteo didn't answer. Trying again in 60 seconds.</p>
+          <button type="button" class="btn btn-fill" id="btn-retry">Try now</button>
+        </div>
+        <h1 id="verdict-label" class="verdict"></h1>
+        <div class="verdict-side">
+          <p id="reasons" class="reason"></p>
+          <div class="row">
+            <button type="button" class="btn btn-fill" id="btn-announce">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"/><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"/></svg>
+              <span class="btn-text">Read it aloud</span>
+            </button>
+            <span class="hint" id="verdict-hint"></span>
+          </div>
+          <p class="announce" id="announce-text" aria-live="polite"></p>
+          <audio id="audio" hidden></audio>
+        </div>
+      </section>
+
+      <section class="panel rail-title" id="tab-local" role="tabpanel" aria-labelledby="tab-btn-local" hidden>
+        <div class="title-block">
+          <h1 class="view-title">Princeton High School</h1>
+          <p>Everything within 25 km of the school. Click any street, park or building for its air and weather. Farther away, Earth takes over.</p>
+        </div>
+        <div class="controls">
+          <div class="row">
+            <div class="seg" role="group" aria-label="Base map">
+              <button type="button" data-base="sat" aria-pressed="true">Satellite</button>
+              <button type="button" data-base="map" aria-pressed="false">Map</button>
+            </div>
+            <div class="seg" role="group" aria-label="Zoom">
+              <button type="button" data-view="school" aria-pressed="true">School</button>
+              <button type="button" data-view="city" aria-pressed="false">Town</button>
+            </div>
+          </div>
+          <div class="row checks">
+            <label><input type="checkbox" data-layer="fires" checked> NASA fire detections</label>
+            <label><input type="checkbox" data-layer="grid"> Air model grid</label>
+            <label><input type="checkbox" data-layer="wind" checked> Wind</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel rail-title" id="tab-explore" role="tabpanel" aria-labelledby="tab-btn-explore" hidden>
+        <div class="title-block">
+          <h1 class="view-title">The air across the planet</h1>
+          <p>Each dot is a major city in its EPA color. Tap anywhere to set it beside PHS. This view never shows the classroom sensor.</p>
+        </div>
+        <div class="dist">
+          <div id="dist-bar" class="dist-bar" role="img" aria-label="Loading the world's air"></div>
+          <div id="dist-legend" class="legend"></div>
+          <p id="world-summary" class="dist-summary"></p>
+        </div>
+      </section>
+
+      <section class="panel rail-title rail-forecast" id="tab-sky" role="tabpanel" aria-labelledby="tab-btn-sky" hidden>
+        <h1 class="view-title" id="fc-title">The next 24 hours of sky</h1>
+        <p id="fc-text" class="fc-text"></p>
+      </section>
+
+      <section class="panel rail-replay" id="tab-replay" role="tabpanel" aria-labelledby="tab-btn-replay" hidden>
+        <p id="r-verdict" class="verdict verdict-static"></p>
+        <div class="verdict-side">
+          <p class="reason"><b id="r-time"></b> <span id="r-story"></span> Wind <span id="r-wind"></span>.</p>
+          <div class="scrub">
+            <div id="scrub-bars" aria-hidden="true"></div>
+            <label class="scrub-label" for="scrub">Hour of June 7, 2023</label>
+            <input type="range" id="scrub" min="0" max="23" value="17" step="1">
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- lower sash: rises with the verdict; the gap under it shows the outside -->
+    <div class="lower" data-show="now local explore replay" aria-hidden="true">
+      <div class="panes lower-panes">
+        <div class="pane"></div><div class="bar"></div><div class="pane"></div><div class="bar bar-3"></div><div class="pane pane-3"></div>
+      </div>
+      <div class="sash-rail"><span class="lift"></span></div>
+      <div class="sash-gap" id="sash-gap">
+        <svg class="streaks" id="streaks" width="100%" height="140" viewBox="0 0 1392 140" preserveAspectRatio="none">
+          <g stroke="#FFFFFF" stroke-linecap="round" fill="none" stroke-width="1.5">
+            <path d="M20 128h84" stroke-opacity=".7"/><path d="M160 114h52" stroke-opacity=".5"/><path d="M250 132h96" stroke-opacity=".8"/>
+            <path d="M392 120h70" stroke-opacity=".6"/><path d="M470 108h110" stroke-opacity=".75"/><path d="M640 130h60" stroke-opacity=".55"/>
+            <path d="M700 116h92" stroke-opacity=".8"/><path d="M850 126h104" stroke-opacity=".7"/><path d="M1010 112h58" stroke-opacity=".5"/>
+            <path d="M1040 132h120" stroke-opacity=".8"/><path d="M1210 118h80" stroke-opacity=".65"/><path d="M120 96h40" stroke-opacity=".4"/>
+            <path d="M420 92h48" stroke-opacity=".45"/><path d="M610 98h66" stroke-opacity=".5"/><path d="M880 90h50" stroke-opacity=".45"/>
+            <path d="M990 98h70" stroke-opacity=".55"/><path d="M1250 92h110" stroke-opacity=".75"/><path d="M40 72h60" stroke-opacity=".5"/>
+            <path d="M262 64h58" stroke-opacity=".55"/><path d="M486 74h40" stroke-opacity=".4"/><path d="M742 66h28" stroke-opacity=".3"/>
+            <path d="M958 74h36" stroke-opacity=".35"/><path d="M1196 66h26" stroke-opacity=".3"/><path d="M150 44h30" stroke-opacity=".3"/>
+            <path d="M398 38h24" stroke-opacity=".25"/><path d="M610 48h52" stroke-opacity=".5"/><path d="M836 40h44" stroke-opacity=".45"/>
+            <path d="M1070 46h56" stroke-opacity=".5"/><path d="M1290 36h48" stroke-opacity=".45"/><path d="M60 18h56" stroke-opacity=".5"/>
+            <path d="M330 22h90" stroke-opacity=".65"/><path d="M700 16h60" stroke-opacity=".4"/><path d="M1000 22h70" stroke-opacity=".5"/>
+          </g>
+        </svg>
+        <span class="gap-text" id="gap-text"></span>
+      </div>
+    </div>
+
+    <!-- sill: three readouts per view -->
+    <div class="sill sill-now" data-show="now">
+      <div class="readout"><span class="num" id="aqi"></span><span class="lbl">US AQI outside<br><span id="aqi-cat" class="cat"></span></span></div>
+      <div class="readout"><span class="num" id="stale"></span><span class="lbl lbl-stack">Stale index inside, out of 100<span class="meter"><span id="stale-bar"></span></span></span></div>
+      <div class="readout"><span class="num" id="sill-temp"></span><span class="lbl"><span id="sill-cond"></span><br><span id="sill-feels" class="muted"></span></span></div>
+    </div>
+
+    <div class="sill sill-text" data-show="local">
+      <div class="tread"><span class="lbl muted" id="pi-label">Inside, the Raspberry Pi</span><span class="txt"><b class="tabnum" id="pi-stale"></b> stale index, <span id="pi-trend"></span>. <span id="local-scope"></span></span></div>
+      <div class="tread"><span class="lbl muted">Outside, at PHS</span><span class="txt"><b class="tabnum" id="po-aqi"></b> US AQI, <span id="po-cat" class="cat"></span>. <span id="po-wx"></span></span></div>
+      <div class="tread"><span class="lbl muted">Wind</span><span class="txt" id="po-wind"></span></div>
+    </div>
+
+    <div class="sill sill-earth" data-show="explore">
+      <div id="explore-card" hidden>
+        <p class="x-head"><b id="x-place"></b> <span class="muted tabnum" id="x-coords"></span> <span id="x-verdict" class="tabnum"></span><span id="x-cat" class="cat"></span> <span id="x-compare"></span></p>
+        <div class="table-scroll">
+          <table class="compare">
+            <thead>
+              <tr><th scope="col">Place</th><th scope="col">US AQI</th><th scope="col">PM2.5</th><th scope="col">Smoke haze</th><th scope="col">Sky</th><th scope="col">Temp</th><th scope="col">Humidity</th><th scope="col">Wind</th><th scope="col">Local time</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row" id="x-here">Here</th><td id="x-aqi"></td><td id="x-pm"></td><td id="x-aod"></td><td id="x-cond"></td><td id="x-temp"></td><td id="x-hum"></td><td id="x-wind"></td><td id="x-time"></td></tr>
+              <tr><th scope="row">PHS</th><td id="c-aqi"></td><td id="c-pm"></td><td id="c-aod"></td><td id="c-cond"></td><td id="c-temp"></td><td id="c-hum"></td><td id="c-wind"></td><td id="c-time"></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="x-status" id="x-status">Tap anywhere on the globe to set it beside PHS.</p>
+    </div>
+
+    <div class="sill sill-now sill-replay" data-show="replay">
+      <div class="readout"><span class="num" id="r-aqi"></span><span class="lbl">US AQI outside<br><span id="r-cat" class="cat"></span></span></div>
+      <div class="readout"><span class="num" id="r-pm"></span><span class="lbl">PM2.5 outside, µg/m³<br><span class="muted">The shut-the-window line is 35</span></span></div>
+      <div class="readout"><span class="num" id="r-beam"></span><span class="lbl">Sunbeam through the haze<br><span class="muted" id="r-aod"></span></span></div>
+    </div>
+
+    <div class="fc-block" data-show="sky">
+      <div class="fc-chart">
+        <div class="chart-box"><canvas id="forecast" role="img" aria-label="US AQI, smoke haze and cloud cover over the next 24 hours"></canvas></div>
+      </div>
+      <div class="fc-side">
+        <div class="wind-box">
+          <svg viewBox="0 0 100 100" width="96" height="96" role="img" aria-label="Wind direction">
+            <circle cx="50" cy="50" r="44" fill="none" stroke="#B9BEBB" stroke-width="2"/>
+            <g font-size="10" fill="#5B636B" text-anchor="middle" font-family="Archivo, sans-serif"><text x="50" y="16">N</text><text x="88" y="54">E</text><text x="50" y="92">S</text><text x="12" y="54">W</text></g>
+            <g id="wind-arrow"><path d="M50 72V28M42 36l8-8 8 8" fill="none" stroke="#1C2024" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>
+          </svg>
+          <div class="wind-copy"><span class="wind-big tabnum" id="wind-big"></span><span class="muted" id="wind-note">Smoke travels with the wind.</span></div>
+        </div>
+        <dl class="dl fc-dl">
+          <dt id="fc-rise-l">Next sunrise</dt><dd id="fc-rise"></dd>
+          <dt id="fc-set-l">Next sunset</dt><dd id="fc-set"></dd>
+          <dt>Clouds now</dt><dd id="clouds"></dd>
+          <dt>UV index now</dt><dd id="uv"></dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="rulers-row" data-show="now local explore sky replay">
+      <nav class="rulers" role="tablist" aria-label="Views" aria-owns="tab-btn-system">
+        <div class="ruler" data-ruler="distance" role="presentation">
+          <div class="ticks" aria-hidden="true"></div>
+          <div class="ruler-tabs" role="presentation">
+            <button type="button" role="tab" data-tab="now" id="tab-btn-window" class="at" aria-controls="tab-now" aria-selected="true">Window</button>
+            <button type="button" role="tab" data-tab="local" id="tab-btn-local" aria-controls="tab-local" aria-selected="false">Campus <span class="sub">25 km</span></button>
+            <button type="button" role="tab" data-tab="explore" id="tab-btn-explore" aria-controls="tab-explore" aria-selected="false">Earth</button>
+          </div>
+        </div>
+        <div class="ruler" data-ruler="time" role="presentation">
+          <div class="ticks" aria-hidden="true"></div>
+          <div class="ruler-tabs" role="presentation">
+            <button type="button" role="tab" data-tab="replay" id="tab-btn-replay" aria-controls="tab-replay" aria-selected="false">June 7, 2023</button>
+            <button type="button" role="tab" data-tab="now" id="tab-btn-now" class="at" aria-controls="tab-now" aria-selected="true">Now</button>
+            <button type="button" role="tab" data-tab="sky" id="tab-btn-sky" aria-controls="tab-sky" aria-selected="false" aria-label="Next 24 hours">Next 24 <span class="long">hours</span><span class="short">h</span></button>
+          </div>
+        </div>
+      </nav>
+      <span class="grow"></span>
+      <label class="jump" data-show="explore">Jump to
+        <select id="region-jump">
+          <option value="">Choose a region</option>
+          <option data-region="45,-100">North America</option>
+          <option data-region="-15,-60">South America</option>
+          <option data-region="50,12">Europe</option>
+          <option data-region="5,20">Africa</option>
+          <option data-region="28,80">South Asia</option>
+          <option data-region="35,115">East Asia</option>
+          <option data-region="-25,135">Oceania</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <!-- below the window: the full readings for each view -->
+  <div class="below">
+    <section class="sec" data-show="now" aria-labelledby="readings-title">
+      <div class="sec-head">
+        <h2 id="readings-title">The readings behind <span id="readings-when">this</span> answer</h2>
+        <p class="muted">Sky data from the CAMS model via Open-Meteo, for PHS's exact location.</p>
+      </div>
+      <div class="cols3">
+        <div class="col">
+          <h3>Outside, over PHS</h3>
+          <dl class="dl">
+            <dt>US AQI</dt><dd id="d-aqi"></dd>
+            <dt>PM2.5</dt><dd id="pm25"></dd>
+            <dt>Smoke haze (aerosol optical depth)</dt><dd id="aod"></dd>
+            <dt>Sunbeam through the haze</dt><dd id="haze"></dd>
+            <dt>Wind</dt><dd id="wind-text"></dd>
+          </dl>
+        </div>
+        <div class="col">
+          <h3>Inside, PHS classroom</h3>
+          <dl class="dl">
+            <dt>Stale index</dt><dd id="d-stale"></dd>
+            <dt>Trend</dt><dd id="rate"></dd>
+            <dt>Air sensor</dt><dd id="air"></dd>
+            <dt>Sky clarity at the window</dt><dd id="clarity"></dd>
+          </dl>
+          <p class="note" id="event"></p>
+          <p class="note muted" id="room-note"></p>
+        </div>
+        <div class="col">
+          <h3>Weather at PHS</h3>
+          <dl class="dl">
+            <dt>Conditions</dt><dd id="wx-cond"></dd>
+            <dt>Temperature</dt><dd id="wx-temp"></dd>
+            <dt>Humidity</dt><dd id="wx-hum"></dd>
+            <dt>Wind and gusts</dt><dd id="wx-wind"></dd>
+            <dt>Rain in the last hour</dt><dd id="wx-rain"></dd>
+          </dl>
+        </div>
+      </div>
+      <p class="fireline" id="fire-line"></p>
+      <div class="setup-row">
+        <button type="button" class="btn btn-ghost" id="btn-setup" aria-expanded="false" aria-controls="setup-panel">Setup and sensor training</button>
+        <span class="mock-only btn-group" hidden>
+          <button type="button" class="btn btn-ghost" data-mock="spike">Simulate a cleaning-spray spike</button>
+          <button type="button" class="btn btn-ghost server-only" data-mock="cover">Simulate a covered light sensor</button>
+        </span>
+        <span class="grow"></span>
+        <p class="credits">Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0), NASA FIRMS, OpenStreetMap. Earth imagery: NASA Blue Marble.</p>
+      </div>
+      <div class="setup-panel" id="setup-panel" hidden>
+        <p class="showcase-only muted">Calibration and labeling run on the SkyWindow device. Open this page from the Raspberry Pi to use them.</p>
+        <div class="btn-group server-only">
+          <button type="button" class="btn btn-ghost" data-cal="air">Set the clean-air baseline</button>
+          <button type="button" class="btn btn-ghost" data-cal="light">Calibrate the light sensor to the sky</button>
+        </div>
+        <p class="muted server-only">Label what is happening in the room right now to train the indoor event classifier.</p>
+        <div class="btn-group server-only">
+          <button type="button" class="btn btn-ghost" data-label="normal">normal</button>
+          <button type="button" class="btn btn-ghost" data-label="chemical">chemical</button>
+          <button type="button" class="btn btn-ghost" data-label="breath">breath</button>
+          <button type="button" class="btn btn-ghost" data-label="covered">covered</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" data-show="local" aria-labelledby="campus-title">
+      <h2 class="vh" id="campus-title">Campus readings</h2>
+      <div id="local-out" class="pick" hidden>
+        <p class="muted" id="lo-dist"></p>
+        <p class="pick-lede">That spot is outside the PHS campus area. Look at it in the global view instead.</p>
+        <button type="button" class="btn btn-fill" id="btn-to-earth">Open it in Earth</button>
+      </div>
+      <div id="local-card" class="pick" hidden>
+        <p class="muted tabnum" id="l-coords"></p>
+        <h3 class="pick-title" id="l-place"></h3>
+        <p class="pick-verdict"><span id="l-verdict" class="pick-word"></span> <span id="l-cat" class="cat"></span></p>
+        <div class="cols3">
+          <div class="col">
+            <h3>Air</h3>
+            <dl class="dl">
+              <dt>US AQI</dt><dd id="l-aqi"></dd>
+              <dt>PM2.5, µg/m³</dt><dd id="l-pm"></dd>
+              <dt>PM10, µg/m³</dt><dd id="l-pm10"></dd>
+              <dt>Ozone, µg/m³</dt><dd id="l-o3"></dd>
+              <dt>Nitrogen dioxide, µg/m³</dt><dd id="l-no2"></dd>
+              <dt>Sulfur dioxide, µg/m³</dt><dd id="l-so2"></dd>
+              <dt>Carbon monoxide, µg/m³</dt><dd id="l-co"></dd>
+              <dt>Smoke haze</dt><dd id="l-aod"></dd>
+              <dt>UV index</dt><dd id="l-uv"></dd>
+            </dl>
+          </div>
+          <div class="col">
+            <h3>Weather</h3>
+            <dl class="dl">
+              <dt>Conditions</dt><dd id="l-cond"></dd>
+              <dt>Temperature</dt><dd id="l-temp"></dd>
+              <dt>Humidity</dt><dd id="l-hum"></dd>
+              <dt>Dew point</dt><dd id="l-dew"></dd>
+              <dt>Wind and gusts</dt><dd id="l-wind"></dd>
+              <dt>Rain in the last hour</dt><dd id="l-rain"></dd>
+              <dt>Pressure</dt><dd id="l-press"></dd>
+              <dt>Visibility</dt><dd id="l-vis"></dd>
+              <dt>Elevation</dt><dd id="l-elev"></dd>
+            </dl>
+          </div>
+          <div class="col">
+            <h3>Within 1 km</h3>
+            <p class="body-sm" id="l-around"></p>
+            <h3>Nearest fire detection</h3>
+            <p class="body-sm" id="l-fire"></p>
+          </div>
+        </div>
+        <p class="credits">Open sources: Open-Meteo (CAMS and ECMWF air quality and weather models, CC BY 4.0), OpenStreetMap through Nominatim and Overpass (ODbL), NASA FIRMS VIIRS fire detections.</p>
+      </div>
+      <div class="cols3">
+        <div class="col">
+          <h3>The Raspberry Pi in the classroom</h3>
+          <dl class="dl">
+            <dt>Air sensor</dt><dd id="pi-air"></dd>
+            <dt>Light at the window</dt><dd id="pi-light"></dd>
+            <dt>Status</dt><dd id="pi-status"></dd>
+          </dl>
+        </div>
+        <div class="col">
+          <h3>Recent fires, from NASA satellites</h3>
+          <p class="body-sm" id="fire-summary">Loading satellite fire detections.</p>
+        </div>
+        <div class="col">
+          <h3>About this data</h3>
+          <p class="body-sm muted">Air data comes from the CAMS model through Open-Meteo. Its grid is about 40 km wide, so nearby squares often share a value; street-level differences need ground sensors. Fire points are VIIRS thermal detections with low-confidence ones removed. They include small crop and brush burns and some industrial heat sources, not only wildfires.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" data-show="explore" aria-labelledby="earth-title">
+      <h2 class="vh" id="earth-title">About the Earth view</h2>
+      <div class="cols3">
+        <div class="col">
+          <h3>How to use it</h3>
+          <p class="body-sm">Drag to turn the globe, scroll or pinch to zoom, and tap any spot to set its air beside PHS. Red numbers in the table are dirtier than PHS, green ones cleaner.</p>
+        </div>
+        <div class="col">
+          <h3>Where the numbers come from</h3>
+          <p class="body-sm muted">The CAMS atmospheric model via Open-Meteo, updated hourly. Model estimates can differ from local ground monitors; airnow.gov has station readings for the United States.</p>
+        </div>
+        <div class="col">
+          <h3>Credits</h3>
+          <p class="body-sm muted">Earth imagery: NASA Blue Marble, from the three.js example textures. Globe adapted from <a href="https://github.com/Flotrpy/TerraShift" target="_blank" rel="noopener">TerraShift</a> (MIT License). Place names: OpenStreetMap through Nominatim (ODbL).</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" data-show="sky" aria-labelledby="sky-more-title">
+      <div class="sec-head"><h2 id="sky-more-title">The sky over PHS right now</h2></div>
+      <div class="cols3">
+        <div class="col">
+          <dl class="dl">
+            <dt>Temperature</dt><dd id="temp"></dd>
+            <dt>Ozone</dt><dd id="ozone"></dd>
+            <dt>Sun elevation</dt><dd id="sun-el"></dd>
+            <dt>Sunlight on a clear day, now</dt><dd id="clear-sky"></dd>
+          </dl>
+        </div>
+        <div class="col server-only">
+          <h3>Last hour, inside and outside</h3>
+          <div class="chart-box chart-sm"><canvas id="chart" role="img" aria-label="Room stale index and outdoor AQI over the last hour"></canvas></div>
+        </div>
+        <div class="col">
+          <p class="body-sm muted">Forecast from the CAMS air-quality model and the ECMWF weather model via Open-Meteo. Sunrise and sunset are worked out from the sun's position over PHS.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec story" data-show="replay" aria-labelledby="story-title">
+      <div class="story-hero">
+        <div class="story-intro">
+          <h2 class="story-title" id="story-title">The day the sky over Princeton turned orange</h2>
+          <p>Smoke from Canadian wildfires drifted over New Jersey and gave Princeton some of its worst air on record. Drag through the day hour by hour. The sky in the window is rendered from the real measurements, and the verdict is what SkyWindow would have told PHS.</p>
+        </div>
+        <div class="story-side">
+          <dl class="dl story-dl">
+            <dt>Worst AQI</dt><dd id="st-worst"></dd>
+            <dt>Thickest haze</dt><dd id="st-haze"></dd>
+            <dt>Hours to keep shut</dt><dd id="st-shut"></dd>
+          </dl>
+          <button type="button" class="btn btn-fill btn-lg" id="btn-replay">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5v11l9-5.5z"/></svg>
+            <span class="btn-text">Play the day</span>
+          </button>
+          <p class="muted body-sm" id="replay-note"></p>
+          <p class="body-sm" id="replay-status" aria-live="polite"></p>
+        </div>
+      </div>
+      <div class="story-hours" id="story-hours"></div>
+      <p class="credits">Source: CAMS air-quality model and ERA5 weather via Open-Meteo. Sun angle from the solar position at PHS. Sunbeam share from the Beer–Lambert law.</p>
+    </section>
+
+    <section class="panel how" id="tab-system" role="tabpanel" aria-labelledby="tab-btn-system" hidden>
+      <div class="how-intro">
+        <h1 class="how-title">How SkyWindow decides</h1>
+        <p>A Raspberry Pi on a classroom windowsill compares the sky outside with the air inside, once a second, and turns it into one answer.</p>
+      </div>
+      <div class="flow-scroll">
+        <div class="flow">
+          <svg class="flow-lines" width="1296" height="470" viewBox="0 0 1296 470" aria-hidden="true">
+            <defs><marker id="flow-arrow" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#5B636B"/></marker></defs>
+            <g fill="none" stroke="#5B636B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M272 48h48M272 168h48M272 288h48M272 408h48M320 48v360"/>
+              <path d="M320 228h43" marker-end="url(#flow-arrow)"/>
+              <path d="M640 228h91" marker-end="url(#flow-arrow)"/>
+              <path d="M976 228h48M1024 108v240"/>
+              <path d="M1024 108h43" marker-end="url(#flow-arrow)"/><path d="M1024 228h43" marker-end="url(#flow-arrow)"/><path d="M1024 348h43" marker-end="url(#flow-arrow)"/>
+            </g>
+          </svg>
+          <div class="node" style="--x:0;--y:0"><span><b>Air sensor</b><br>Grove VOC gas sensor, in the classroom</span></div>
+          <div class="node" style="--x:0;--y:120"><span><b>Light sensor</b><br>Faces out the window</span></div>
+          <div class="node" style="--x:0;--y:240"><span><b>Sky data</b><br>Open-Meteo: AQI, PM2.5, haze, wind</span></div>
+          <div class="node" style="--x:0;--y:360"><span><b>Fire detections</b><br>NASA satellites, every hour</span></div>
+          <div class="node node-tall" style="--x:368;--y:160"><span><b>Raspberry Pi</b><br>Reads everything once a second and works out the sunbeam through the haze</span></div>
+          <div class="node node-tall node-dark" style="--x:736;--y:160;--w:240"><span><b>One verdict</b><br>Sky against room, with a buffer so it doesn't flicker</span></div>
+          <div class="node" style="--x:1072;--y:60;--w:224"><span><b>LCD on the sill</b><br>The word and a backlight color</span></div>
+          <div class="node" style="--x:1072;--y:180;--w:224"><span><b>This website</b><br>Live on any phone</span></div>
+          <div class="node" style="--x:1072;--y:300;--w:224"><span><b>Spoken update</b><br>Gemini writes it, ElevenLabs reads it</span></div>
+        </div>
+      </div>
+      <div class="how-cols">
+        <div class="col">
+          <h2>Sunbeam through the haze</h2>
+          <p class="formula">T = e<sup>−AOD / sin(sun elevation)</sup></p>
+          <p>The Beer–Lambert law: the lower the sun and the thicker the haze, the less of the direct beam reaches the window. About 96% at noon on October 6. About 9% at 5 pm on June 7, 2023.</p>
+        </div>
+        <div class="col">
+          <h2>Honest about the sensor</h2>
+          <p>The Grove sensor measures VOC gas relative to the room's own clean-air baseline. So SkyWindow shows a stale index from 0 to 100, never a made-up indoor AQI. The outdoor AQI comes from real atmospheric data.</p>
+        </div>
+        <div class="col">
+          <h2>Trained on our own readings</h2>
+          <p>We labeled sensor data during the hackathon: normal air, cleaning sprays and markers, breath, and a covered light sensor. A random forest learned to tell them apart, tested on sessions it never saw.</p>
+        </div>
+      </div>
+      <div class="how-cols how-rules">
+        <div class="col">
+          <h2>The four answers</h2>
+          <dl class="dl">
+            <dt><span class="v v-open">Open the window.</span></dt><dd>AQI 50 or below, or moderate air with a stale room</dd>
+            <dt><span class="v v-either">Either way.</span></dt><dd>Moderate air and a room that isn't stale</dd>
+            <dt><span class="v v-shut">Keep it shut.</span></dt><dd>AQI above 100, PM2.5 above 35, or heavy haze</dd>
+            <dt><span class="v v-vent">Ventilate now.</span></dt><dd>The room just spiked</dd>
+          </dl>
+        </div>
+        <div class="col">
+          <h2>Real alerts</h2>
+          <p>A red banner appears when the air over PHS is actually unhealthy, with the EPA's health advice. An orange fire watch appears when NASA satellites see sizeable fires upwind; an open verdict then softens to either way.</p>
+        </div>
+        <div class="col">
+          <h2>Credits</h2>
+          <p>Sky data: Open-Meteo (CC BY 4.0), CAMS and ERA5. Fires: NASA FIRMS. Maps: Esri and OpenStreetMap. Globe adapted from <a href="https://github.com/Flotrpy/TerraShift" target="_blank" rel="noopener">TerraShift</a> (MIT License) with NASA Blue Marble imagery. Built at hackPHS 2026.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="globe.js"></script>
+  <script src="audio.js"></script>
+  <script src="sky-local.js"></script>
+  <script src="local.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

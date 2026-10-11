@@ -4,322 +4,196 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SkyWindow</title>
-  <meta name="description" content="SkyWindow - a windowsill instrument that reads the sky above you and the air in your room. hackPHS 2026: Into the Skies.">
-  <!-- Libraries, fonts and Earth textures are bundled in vendor/ so the site works without internet (see vendor/README.md) -->
-  <link rel="stylesheet" href="vendor/fonts/fonts.css">
-  <link rel="stylesheet" href="vendor/leaflet.min.css">
-  <link rel="stylesheet" href="style.css">
-  <script src="vendor/three.min.js"></script>
+  <meta name="description" content="SkyWindow sits on a windowsill at Princeton High School. It reads the sky outside and the air in the room, then tells every classroom whether to open the windows. hackPHS 2026.">
+  <meta name="theme-color" content="#0b0d10">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 20 20%22%3E%3Crect width=%2220%22 height=%2220%22 fill=%22%231C2024%22/%3E%3Cpath d=%22M5 4h10v12H5zM5 10h10M10 4v12%22 fill=%22none%22 stroke=%22%23F2F3F0%22 stroke-width=%221.6%22/%3E%3C/svg%3E">
+  <!-- Everything is bundled locally (vendor/, assets/) so the story runs on the Pi's hotspot without internet. -->
+  <link rel="stylesheet" href="vendor/fonts/archivo.css">
+  <link rel="stylesheet" href="vendor/lenis.css">
+  <link rel="stylesheet" href="story/story.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
   <script src="vendor/gsap.min.js"></script>
-  <script src="vendor/chart.umd.min.js"></script>
-  <script src="vendor/leaflet.min.js"></script>
+  <script src="vendor/lenis.min.js"></script>
+  <script src="sky-local.js"></script>
+  <script type="module" src="story/main.js"></script>
 </head>
 <body>
-  <canvas id="globe" aria-label="Interactive globe showing the atmosphere above Princeton, NJ"></canvas>
-  <div id="vignette" aria-hidden="true"></div>
-  <div id="localmap" aria-label="Map of the area around Princeton High School" hidden></div>
+  <a class="skip" href="app.html">Skip to the live dashboard</a>
+  <canvas id="stage" aria-hidden="true"></canvas>
+  <div class="scrim" aria-hidden="true"></div>
+  <div id="labels" aria-hidden="true"></div>
 
-  <!-- splash -->
-  <div id="splash">
-    <div class="wordmark">SKYWINDOW</div>
-    <div class="mono" id="splash-pct">0%</div>
-  </div>
-
-  <div id="alert" class="alert mono" role="alert" hidden></div>
-
-  <!-- hero -->
-  <section id="hero">
-    <div class="mono kicker">HACKPHS 2026 · INTO THE SKIES · 40.36°N 74.66°W</div>
-    <h1>LET THE<br>SKY IN.</h1>
-    <p class="mono lede">AN INSTRUMENT AT PRINCETON HIGH SCHOOL THAT READS THE SKY OUTSIDE AND THE AIR INSIDE, THEN TELLS EVERY CLASSROOM WHETHER TO OPEN THE WINDOWS.</p>
-    <button id="btn-initiate" class="cta">INITIATE SKY LINK <span aria-hidden="true">→</span></button>
-    <div class="mono hint">◐ EXPERIENCE WITH HEADPHONES · DRAG OR SCROLL TO ZOOM THE GLOBE</div>
-    <div class="mono ticker" id="hero-ticker">ACQUIRING SKY SIGNAL…</div>
-  </section>
-
-  <!-- HUD -->
-  <div id="hud" hidden>
-    <header class="topbar">
-      <button class="brand" id="btn-orbit" title="Back to orbit">SKYWINDOW</button>
-      <nav role="tablist" aria-label="Sections">
-        <button role="tab" data-tab="now" aria-selected="true"><span>01</span>NOW</button>
-        <button role="tab" data-tab="local"><span>02</span>PHS CAMPUS</button>
-        <button role="tab" data-tab="sky"><span>03</span>FORECAST</button>
-        <button role="tab" data-tab="explore"><span>04</span>EARTH</button>
-        <button role="tab" data-tab="replay"><span>05</span>2023 RECORD</button>
-        <button role="tab" data-tab="system"><span>06</span>SYSTEM</button>
-      </nav>
-      <div class="status">
-        <span class="chip mono" id="mode-chip">—</span>
-        <button class="icon mono" id="btn-sound" aria-pressed="false" title="Ambient sky sound">SOUND OFF</button>
+  <div id="loader" role="dialog" aria-modal="true" aria-labelledby="load-title">
+    <div class="band band-top" aria-hidden="true"></div>
+    <div class="band band-bottom" aria-hidden="true"></div>
+    <div class="load-inner">
+      <svg class="mark" viewBox="0 0 120 140" aria-hidden="true">
+        <rect x="6" y="6" width="108" height="128"></rect>
+        <path d="M6 72h108M60 6v128"></path>
+      </svg>
+      <h1 id="load-title" class="wordmark">SkyWindow</h1>
+      <p class="load-q">Should Princeton High School open its windows right now?</p>
+      <div class="load-progress" aria-hidden="true"><span id="load-bar"></span></div>
+      <p class="load-pct"><span id="load-pct">0%</span><span class="load-what">Loading the Earth, the satellite and Princeton</span></p>
+      <div class="load-actions">
+        <button id="enter" class="btn btn-light" type="button" disabled>Look outside</button>
+        <button id="sound-pref" class="btn btn-outline-light" type="button" aria-pressed="false">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"></path><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"></path></svg>
+          <span data-sound-label>Sound off</span>
+        </button>
       </div>
-    </header>
-
-    <main class="panels">
-      <!-- 01 NOW -->
-      <section class="panel" id="tab-now" role="tabpanel">
-        <div class="mono label">VERDICT · <span id="clock">--:--</span></div>
-        <div id="verdict-label">STANDBY</div>
-        <ul id="reasons" class="mono"></ul>
-        <div id="event" class="mono"></div>
-        <div class="row announce">
-          <button class="ghost small" id="btn-announce" title="Read the verdict aloud">🔊 ANNOUNCE</button>
-          <span class="mono fine" id="announce-text"></span>
-          <audio id="audio" hidden></audio>
-        </div>
-
-        <div class="grid2">
-          <div class="readout">
-            <div class="mono label">OUTSIDE · SKY OVER PHS</div>
-            <div class="big"><span id="aqi">–</span><small class="mono">US AQI</small></div>
-            <div class="cat mono" id="aqi-cat">–</div>
-            <dl class="mono">
-              <dt>PM2.5</dt><dd id="pm25">–</dd>
-              <dt>SMOKE HAZE (AOD)</dt><dd id="aod">–</dd>
-              <dt>SUNBEAM THROUGH HAZE</dt><dd id="haze">–</dd>
-              <dt>WIND</dt><dd id="wind-text">–</dd>
-            </dl>
-          </div>
-          <div class="readout">
-            <div class="mono label">INSIDE · PHS CLASSROOM</div>
-            <div class="big"><span id="stale">–</span><small class="mono">STALE /100</small></div>
-            <div class="meter"><div id="stale-bar"></div></div>
-            <dl class="mono">
-              <dt>TREND</dt><dd id="rate">–</dd>
-              <dt>AIR SENSOR</dt><dd id="air">–</dd>
-              <dt>SKY CLARITY</dt><dd id="clarity">–</dd>
-            </dl>
-          </div>
-        </div>
-
-        <div class="mono label">WEATHER AT PHS</div>
-        <div class="wx mono">
-          <div><div class="label">NOW</div><div class="val" id="wx-cond">–</div></div>
-          <div><div class="label">TEMP / FEELS</div><div class="val" id="wx-temp">–</div></div>
-          <div><div class="label">HUMIDITY</div><div class="val" id="wx-hum">–</div></div>
-          <div><div class="label">WIND / GUSTS</div><div class="val" id="wx-wind">–</div></div>
-          <div><div class="label">RAIN (1H)</div><div class="val" id="wx-rain">–</div></div>
-        </div>
-        <div class="mono fireline" id="fire-line"></div>
-
-        <details class="setup">
-          <summary class="mono">SETUP &amp; TRAINING</summary>
-          <div class="row server-only">
-            <button class="ghost small" data-cal="air">SET CLEAN-AIR BASELINE</button>
-            <button class="ghost small" data-cal="light">CALIBRATE LIGHT TO SKY</button>
-          </div>
-          <p class="mono fine server-only">LABEL WHAT'S HAPPENING NOW TO TRAIN THE INDOOR EVENT CLASSIFIER:</p>
-          <div class="row server-only">
-            <button class="ghost small" data-label="normal">normal</button>
-            <button class="ghost small" data-label="chemical">chemical</button>
-            <button class="ghost small" data-label="breath">breath</button>
-            <button class="ghost small" data-label="covered">covered</button>
-          </div>
-          <div class="row mock-only" hidden>
-            <button class="ghost small" data-mock="spike">SIMULATE VOC SPIKE</button>
-            <button class="ghost small server-only" data-mock="cover">SIMULATE COVERED LIGHT</button>
-          </div>
-        </details>
-      </section>
-
-      <!-- 02 LOCAL -->
-      <section class="panel" id="tab-local" role="tabpanel" hidden>
-        <div class="scope local mono">📍 PHS CAMPUS · <span id="local-scope">ROOM SENSOR</span> · WITHIN 25 KM</div>
-        <h2>Princeton High School</h2>
-        <div class="grid2 tight">
-          <div class="readout">
-            <div class="mono label" id="pi-label">INSIDE · RASPBERRY PI</div>
-            <div class="big"><span id="pi-stale">–</span><small class="mono">STALE /100</small></div>
-            <dl class="mono">
-              <dt>TREND</dt><dd id="pi-trend">–</dd>
-              <dt>AIR SENSOR</dt><dd id="pi-air">–</dd>
-              <dt>LIGHT AT WINDOW</dt><dd id="pi-light">–</dd>
-              <dt>STATUS</dt><dd id="pi-status">–</dd>
-            </dl>
-          </div>
-          <div class="readout">
-            <div class="mono label">OUTSIDE · AT PHS</div>
-            <div class="big"><span id="po-aqi">–</span><small class="mono">US AQI</small></div>
-            <div class="cat mono" id="po-cat">–</div>
-            <dl class="mono">
-              <dt>WEATHER</dt><dd id="po-wx">–</dd>
-              <dt>WIND</dt><dd id="po-wind">–</dd>
-            </dl>
-          </div>
-        </div>
-        <div class="row">
-          <button class="ghost small on" data-base="sat">SATELLITE</button>
-          <button class="ghost small" data-base="map">MAP</button>
-          <button class="ghost small on" data-layer="fires">FIRES</button>
-          <button class="ghost small" data-layer="grid">AQI GRID</button>
-          <button class="ghost small" data-view="school">⌂ SCHOOL</button>
-          <button class="ghost small" data-view="city">CITY</button>
-        </div>
-        <p class="mono fine">CLICK ANY STREET, PARK OR BUILDING WITHIN 25 KM OF PHS FOR A DETAILED READING. FOR ANYWHERE ELSE, USE <b>EARTH</b>.</p>
-        <div id="local-out" class="explore-card" hidden>
-          <div class="mono label" id="lo-dist">–</div>
-          <p>That spot is outside the PHS campus area. Look at it in the global view instead.</p>
-          <button class="cta small" id="btn-to-earth">OPEN IN EARTH →</button>
-        </div>
-        <div id="local-card" class="explore-card" hidden>
-          <div class="mono label" id="l-coords">–</div>
-          <h3 id="l-place">–</h3>
-          <div class="x-verdict" id="l-verdict">–</div>
-          <div class="cat mono" id="l-cat"></div>
-          <div class="mono label">AIR</div>
-          <div class="grid3 mono">
-            <div><div class="label">US AQI</div><div class="val" id="l-aqi">–</div></div>
-            <div><div class="label">PM2.5 µg/m³</div><div class="val" id="l-pm">–</div></div>
-            <div><div class="label">PM10 µg/m³</div><div class="val" id="l-pm10">–</div></div>
-            <div><div class="label">OZONE µg/m³</div><div class="val" id="l-o3">–</div></div>
-            <div><div class="label">NO₂ µg/m³</div><div class="val" id="l-no2">–</div></div>
-            <div><div class="label">SO₂ µg/m³</div><div class="val" id="l-so2">–</div></div>
-            <div><div class="label">CO µg/m³</div><div class="val" id="l-co">–</div></div>
-            <div><div class="label">SMOKE HAZE</div><div class="val" id="l-aod">–</div></div>
-            <div><div class="label">UV INDEX</div><div class="val" id="l-uv">–</div></div>
-          </div>
-          <div class="mono label">WEATHER</div>
-          <div class="grid3 mono">
-            <div><div class="label">NOW</div><div class="val" id="l-cond">–</div></div>
-            <div><div class="label">TEMP / FEELS</div><div class="val" id="l-temp">–</div></div>
-            <div><div class="label">HUMIDITY</div><div class="val" id="l-hum">–</div></div>
-            <div><div class="label">DEW POINT</div><div class="val" id="l-dew">–</div></div>
-            <div><div class="label">WIND / GUSTS</div><div class="val" id="l-wind">–</div></div>
-            <div><div class="label">RAIN (1H)</div><div class="val" id="l-rain">–</div></div>
-            <div><div class="label">PRESSURE</div><div class="val" id="l-press">–</div></div>
-            <div><div class="label">VISIBILITY</div><div class="val" id="l-vis">–</div></div>
-            <div><div class="label">ELEVATION</div><div class="val" id="l-elev">–</div></div>
-          </div>
-          <div class="mono label">SURROUNDINGS · 1 KM</div>
-          <div class="fire-summary" id="l-around">–</div>
-          <div class="mono label mt">NEAREST FIRE DETECTION</div>
-          <div class="fire-summary" id="l-fire">–</div>
-          <p class="mono fine">OPEN SOURCES: OPEN-METEO (CAMS/ECMWF AIR QUALITY + WEATHER MODELS, CC BY 4.0) · OPENSTREETMAP VIA NOMINATIM &amp; OVERPASS (ODBL) · NASA FIRMS VIIRS FIRE DETECTIONS.</p>
-        </div>
-        <div class="mono label mt">RECENT FIRES · NASA FIRMS</div>
-        <div id="fire-summary" class="fire-summary">Loading satellite fire detections…</div>
-        <p class="mono fine">AIR DATA: CAMS MODEL VIA OPEN-METEO. ITS GRID IS ABOUT 40 KM, SO NEARBY SQUARES OFTEN SHARE A VALUE; STREET-LEVEL DIFFERENCES NEED GROUND SENSORS. FIRES: VIIRS SATELLITE THERMAL DETECTIONS (LOW-CONFIDENCE REMOVED). THESE INCLUDE SMALL CROP/BRUSH BURNS AND SOME INDUSTRIAL HEAT SOURCES, NOT ONLY WILDFIRES.</p>
-      </section>
-
-      <!-- 02 SKY -->
-      <section class="panel" id="tab-sky" role="tabpanel" hidden>
-        <div class="mono label">ATMOSPHERE ABOVE PRINCETON</div>
-        <h2>The next 24 hours of sky</h2>
-        <canvas id="forecast" height="200"></canvas>
-        <div class="grid3 mono">
-          <div><div class="label">OZONE</div><div class="val" id="ozone">–</div></div>
-          <div><div class="label">CLOUDS</div><div class="val" id="clouds">–</div></div>
-          <div><div class="label">UV INDEX</div><div class="val" id="uv">–</div></div>
-          <div><div class="label">SUN ELEVATION</div><div class="val" id="sun-el">–</div></div>
-          <div><div class="label">CLEAR-SKY SUN</div><div class="val" id="clear-sky">–</div></div>
-          <div><div class="label">TEMPERATURE</div><div class="val" id="temp">–</div></div>
-        </div>
-        <div class="wind-box">
-          <svg viewBox="0 0 100 100" width="96" height="96" aria-label="wind direction">
-            <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-opacity=".25"/>
-            <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-opacity=".1"/>
-            <text x="50" y="11" text-anchor="middle" font-size="9" fill="currentColor" font-family="JetBrains Mono">N</text>
-            <g id="wind-arrow"><path d="M50 18 L58 46 L50 41 L42 46 Z" fill="currentColor"/><rect x="48" y="41" width="4" height="38" fill="currentColor"/></g>
-          </svg>
-          <div class="mono">
-            <div class="label">WIND</div>
-            <div class="val" id="wind-big">–</div>
-            <p class="fine">Arrow shows where the air is heading. Smoke travels with it.</p>
-          </div>
-        </div>
-        <h2>Last hour, inside vs outside</h2>
-        <canvas id="chart" height="170"></canvas>
-      </section>
-
-      <!-- 03 REPLAY -->
-      <section class="panel" id="tab-replay" role="tabpanel" hidden>
-        <div class="mono label">HISTORICAL RECORD · 2023-06-07 · NOT CURRENT CONDITIONS</div>
-        <h2>The day the sky turned orange</h2>
-        <p>On June 7, 2023, smoke from Canadian wildfires drifted over New Jersey and gave Princeton some of its worst air on record. This is the real recorded atmosphere for that day (CAMS air-quality model and ERA5 weather via Open-Meteo). Drag through the hours to see what SkyWindow would have told PHS. For what's happening right now, see <b>NOW</b> and <b>PHS CAMPUS</b>.</p>
-        <div id="scrub-bars" aria-hidden="true"></div>
-        <input type="range" id="scrub" min="0" max="23" value="8" step="1" aria-label="Hour of June 7, 2023">
-        <div class="grid3 mono">
-          <div><div class="label">TIME</div><div class="val" id="r-time">–</div></div>
-          <div><div class="label">US AQI</div><div class="val" id="r-aqi">–</div></div>
-          <div><div class="label">SMOKE HAZE</div><div class="val" id="r-aod">–</div></div>
-          <div><div class="label">PM2.5</div><div class="val" id="r-pm">–</div></div>
-          <div><div class="label">WIND FROM</div><div class="val" id="r-wind">–</div></div>
-          <div><div class="label">VERDICT</div><div class="val" id="r-verdict">–</div></div>
-        </div>
-        <div class="row">
-          <button class="cta" id="btn-replay">▶ PLAY ON DEVICE</button>
-          <span class="mono fine" id="replay-status"></span>
-        </div>
-      </section>
-
-      <!-- 04 SYSTEM -->
-      <section class="panel" id="tab-system" role="tabpanel" hidden>
-        <div class="mono label">HOW IT WORKS</div>
-        <h2>Sky → Device → Decision</h2>
-        <ol class="steps">
-          <li><span class="mono">01 / SENSE</span><b>Inside the school.</b> A Grove air-quality sensor (VOC gas) and a light sensor facing the window, read by a Raspberry Pi through a Grove Base HAT.</li>
-          <li><span class="mono">02 / SKY LINK</span><b>Outside.</b> Live US AQI, PM2.5, ozone, aerosol optical depth (smoke haze), weather and wind for our exact coordinates, plus NASA satellite fire detections near PHS. Sizeable fires upwind trigger a Fire Watch.</li>
-          <li><span class="mono">03 / PHYSICS</span><b>Sunbeam through haze.</b> Beer–Lambert law: <code>T = e<sup>−AOD / sin(sun elevation)</sup></code>, about 88% on a clear day and about 14–30% under 2023's smoke. The light sensor is calibrated against the clear-sky sun (Haurwitz model).</li>
-          <li><span class="mono">04 / DECIDE</span><b>One verdict.</b> Sky vs. room → <i class="v open">OPEN</i> <i class="v either">EITHER</i> <i class="v shut">SHUT</i> <i class="v vent">VENTILATE</i>, shown on the RGB LCD.</li>
-          <li><span class="mono">05 / ANNOUNCE</span><b>One sentence, out loud.</b> Gemini turns the verdict into a short classroom announcement (facts only) and ElevenLabs reads it aloud. A random-forest classifier we trained on our own labeled sensor data recognizes indoor events.</li>
-        </ol>
-        <p class="mono fine">HONESTY NOTE: The indoor sensor is a relative VOC gas sensor. We show a "stale index" compared to the room's own baseline, never a fake AQI.</p>
-      </section>
-
-      <!-- 04 EARTH -->
-      <section class="panel" id="tab-explore" role="tabpanel" hidden>
-        <div class="scope global mono">🌍 GLOBAL VIEW · ATMOSPHERIC MODEL · <span id="world-time">LOADING…</span></div>
-        <h2>The air across the planet</h2>
-        <p>Each dot is a major city, colored by the official U.S. EPA category. Scroll to zoom, drag to spin, and tap anywhere to compare that place with PHS.</p>
-        <div class="row" id="regions">
-          <button class="ghost small" data-region="45,-100">N. AMERICA</button>
-          <button class="ghost small" data-region="-15,-60">S. AMERICA</button>
-          <button class="ghost small" data-region="50,12">EUROPE</button>
-          <button class="ghost small" data-region="5,20">AFRICA</button>
-          <button class="ghost small" data-region="28,80">S. ASIA</button>
-          <button class="ghost small" data-region="35,115">E. ASIA</button>
-          <button class="ghost small" data-region="-25,135">OCEANIA</button>
-        </div>
-        <div class="mono label mt">HOW THE WORLD'S CITIES ARE BREATHING</div>
-        <div id="dist-bar" class="dist-bar"></div>
-        <div id="dist-legend" class="legend mono"></div>
-        <p class="mono fine" id="world-summary"></p>
-
-        <div id="explore-card" class="explore-card" hidden>
-          <div class="mono label" id="x-coords">–</div>
-          <h3 id="x-place">–</h3>
-          <div class="x-verdict" id="x-verdict">–</div>
-          <div class="cat mono" id="x-cat"></div>
-          <table class="compare mono">
-            <thead><tr><th></th><th id="x-here">HERE</th><th>PHS</th></tr></thead>
-            <tbody>
-              <tr><td>US AQI</td><td id="x-aqi">–</td><td id="c-aqi">–</td></tr>
-              <tr><td>PM2.5 µg/m³</td><td id="x-pm">–</td><td id="c-pm">–</td></tr>
-              <tr><td>SMOKE HAZE</td><td id="x-aod">–</td><td id="c-aod">–</td></tr>
-              <tr><td>WEATHER</td><td id="x-cond">–</td><td id="c-cond">–</td></tr>
-              <tr><td>TEMP</td><td id="x-temp">–</td><td id="c-temp">–</td></tr>
-              <tr><td>HUMIDITY</td><td id="x-hum">–</td><td id="c-hum">–</td></tr>
-              <tr><td>WIND</td><td id="x-wind">–</td><td id="c-wind">–</td></tr>
-              <tr><td>LOCAL TIME</td><td id="x-time">–</td><td id="c-time">–</td></tr>
-            </tbody>
-          </table>
-          <p class="mono fine" id="x-compare"></p>
-        </div>
-        <p class="mono fine" id="x-status">TIP: THE ATMOSPHERE RE-TINTS TO MATCH WHEREVER YOU TAP.</p>
-      </section>
-    </main>
-
-    <footer class="hud-foot mono">
-      <span id="foot-coords">40.3587°N 74.6560°W</span>
-      <span id="foot-ticker"></span>
-      <span>DATA: <a href="https://open-meteo.com/" target="_blank" rel="noopener">OPEN-METEO</a> (CC BY 4.0) · EARTH: <a href="https://github.com/Flotrpy/TerraShift" target="_blank" rel="noopener">TERRASHIFT</a> (MIT) · NASA BLUE MARBLE</span>
-    </footer>
+      <p class="load-hint">Scroll to move through the story. Sound follows the real wind over PHS; headphones help.</p>
+    </div>
   </div>
 
-  <script src="globe.js"></script>
-  <script src="audio.js"></script>
-  <script src="sky-local.js"></script>
-  <script src="local.js"></script>
-  <script src="app.js"></script>
+  <header class="bar">
+    <a class="brand" href="#story" data-restart>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3.5" y="2.5" width="13" height="15"></rect><path d="M3.5 10.5h13M10 2.5v15"></path></svg>
+      SkyWindow
+    </a>
+    <nav id="rail" aria-label="Chapters">
+      <div class="rail-track" aria-hidden="true"><span id="rail-fill"></span></div>
+      <ol>
+        <li><button type="button" data-go="0" aria-label="Orbit"></button></li>
+        <li><button type="button" data-go="1" aria-label="The air"></button></li>
+        <li><button type="button" data-go="2" aria-label="Descent"></button></li>
+        <li><button type="button" data-go="3" aria-label="Princeton"></button></li>
+        <li><button type="button" data-go="4" aria-label="The sunbeam"></button></li>
+        <li><button type="button" data-go="5" aria-label="The window"></button></li>
+        <li><button type="button" data-go="6" aria-label="The device"></button></li>
+        <li><button type="button" data-go="7" aria-label="The verdict"></button></li>
+        <li><button type="button" data-go="8" aria-label="Right now"></button></li>
+      </ol>
+      <span id="rail-name" aria-live="polite"></span>
+    </nav>
+    <button class="btn btn-ghost small" type="button" data-sound aria-pressed="false">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 7.75h3l4-3.5v11.5l-4-3.5h-3z"></path><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"></path></svg>
+      <span data-sound-label>Sound off</span>
+    </button>
+    <a class="btn btn-solid small" href="app.html"><span class="hide-sm">Live dashboard</span><span class="show-sm">Dashboard</span></a>
+  </header>
+
+  <main id="story" tabindex="-1">
+    <section data-ch="orbit" data-name="Orbit" data-theme="dark" style="height: 260vh">
+      <div class="copy pos-left" data-in="0.02" data-out="0.4">
+        <h2>Every school day, someone decides whether to open the windows.</h2>
+        <p>Most days it's a guess. SkyWindow answers with data, and the data starts 824 km up.</p>
+        <p class="note">This is the Earth right now, lit by the real sun.</p>
+      </div>
+      <div class="copy pos-left" data-in="0.6" data-out="0.98">
+        <h2>Satellites watch for fire.</h2>
+        <p>NASA's Suomi NPP passes over twice a day. Its VIIRS camera spots fires by their heat, and SkyWindow downloads those detections every hour to see whether smoke could reach PHS.</p>
+      </div>
+    </section>
+
+    <section data-ch="plume" data-name="The air" data-theme="dark" style="height: 300vh">
+      <div class="copy pos-left" data-in="0.02" data-out="0.36">
+        <h2>Air is a column.</h2>
+        <p>Smoke, dust and haze fill it from the ground to the edge of space. Scientists measure how much sunlight that column blocks and call it aerosol optical depth.</p>
+      </div>
+      <div class="copy pos-left" data-in="0.38" data-out="0.97">
+        <h2>June 2023: smoke from Quebec.</h2>
+        <p>Wildfires in Quebec sent smoke about 1,000 km south. Keep scrolling to play June 6 to 8, hour by hour, from the CAMS atmosphere model.</p>
+        <div class="readout">
+          <span class="readout-label" data-bind="plume-time">June 6, 2023, 12 am</span>
+          <span class="readout-big" data-bind="plume-aod">0.00</span>
+          <span class="readout-label">Haze over Princeton (aerosol optical depth). Clean air is under 0.1.</span>
+        </div>
+      </div>
+    </section>
+
+    <section data-ch="descent" data-name="Descent" data-theme="dark" style="height: 150vh">
+      <div class="copy pos-left" data-in="0.02" data-out="0.32">
+        <h2>From 824 km up, down to one school.</h2>
+      </div>
+    </section>
+
+    <section data-ch="princeton" data-name="Princeton" data-theme="dark" style="height: 260vh">
+      <div class="copy pos-left" data-in="0.08" data-out="0.5">
+        <h2>Princeton High School.</h2>
+        <p>Every few minutes SkyWindow pulls the air above this exact spot: AQI, fine particles, ozone, haze and wind, from the CAMS atmosphere model.</p>
+        <p class="live" data-bind="phs-live">Reading the air over PHS…</p>
+      </div>
+      <div class="copy pos-left" data-in="0.55" data-out="0.97">
+        <h2>The wind decides where smoke goes.</h2>
+        <p>These lines follow the live wind over PHS. If NASA sees a large fire upwind, SkyWindow raises a Fire Watch before the smoke arrives.</p>
+        <p class="note">Streets and buildings: OpenStreetMap contributors.</p>
+      </div>
+    </section>
+
+    <section data-ch="sunbeam" data-name="The sunbeam" data-theme="dark" style="height: 300vh">
+      <div class="copy pos-right" data-in="0.04" data-out="0.96">
+        <h2>The sunbeam test.</h2>
+        <p>The thicker the haze and the lower the sun, the less of the direct beam reaches the ground. It's the Beer–Lambert law, the same physics that turns sunsets red.</p>
+        <p class="formula" aria-label="T equals e to the power of minus AOD divided by the sine of the sun's elevation">T = e<sup>−AOD / sin θ</sup></p>
+        <div class="readout two">
+          <div><span class="readout-label">Haze</span><span class="readout-big" data-bind="beam-aod">0.18</span></div>
+          <div><span class="readout-label">Sunbeam getting through</span><span class="readout-big" data-bind="beam-t">74%</span></div>
+        </div>
+        <p class="note">Sun 37° up, as at 5 pm on June 7, 2023. The haze starts at today's reading over PHS (<span data-bind="live-aod">…</span>) and rises to that afternoon's 1.44.</p>
+      </div>
+    </section>
+
+    <section data-ch="window" data-name="The window" data-theme="light" style="height: 240vh">
+      <div class="copy pos-left plate" data-in="0.86" data-out="0.99">
+        <h2>On a classroom windowsill sits SkyWindow.</h2>
+        <p>A Raspberry Pi, two sensors and a small screen. Once a second it compares the sky outside with the air in the room.</p>
+      </div>
+    </section>
+
+    <section data-ch="device" data-name="The device" data-theme="light" style="height: 420vh">
+      <div class="copy pos-left plate" data-in="0.0" data-out="0.18">
+        <h2>Five parts, off the shelf.</h2>
+        <p>Grove sensors plug into a Raspberry Pi with Grove cables. No soldering.</p>
+      </div>
+      <div class="copy pos-left plate" data-in="0.2" data-out="0.41">
+        <h3>The air sensor</h3>
+        <p>A Grove gas sensor that reacts to cleaning sprays, markers and stale air. SkyWindow turns it into a stale index from 0 to 100, measured against the room's own clean baseline. It never pretends to be an AQI.</p>
+      </div>
+      <div class="copy pos-left plate" data-in="0.41" data-out="0.61">
+        <h3>The light sensor</h3>
+        <p>It faces the sky. Calibrated against clear-sky sunlight for this time and place, it shows how much light really gets through.</p>
+      </div>
+      <div class="copy pos-left plate" data-in="0.61" data-out="0.81">
+        <h3>The Raspberry Pi</h3>
+        <p>It reads both sensors, pulls the outdoor data, checks NASA fire detections upwind and decides once a second. A model we trained on our own labelled readings recognises what's happening in the room.</p>
+      </div>
+      <div class="copy pos-left plate" data-in="0.81" data-out="0.99">
+        <h3>The screen and the speaker</h3>
+        <p>One answer in one color, readable from across the room, and read out loud when it changes.</p>
+      </div>
+    </section>
+
+    <section data-ch="verdict" data-name="The verdict" data-theme="light" style="height: 420vh">
+      <div class="copy pos-left plate verdict-plate" data-in="0.02" data-out="0.99">
+        <p id="verdict-word" class="verdict" data-on="false" aria-live="polite"></p>
+        <p data-beat="open" hidden>October 6, noon. AQI 23 outside, cleaner than the room, so the sash goes up.</p>
+        <p data-beat="either" hidden>Tonight. AQI 60 outside and a fresh room, so it barely matters.</p>
+        <p data-beat="shut" hidden>June 7, 2023. Wildfire smoke, AQI 147. Keep it shut and run a fan instead.</p>
+        <div data-beat="ventilate" hidden>
+          <p>Someone sprays cleaner and the room spikes. Open up until it clears.</p>
+          <p class="voice"><b>Then it says it out loud.</b> Gemini writes one sentence from the facts, and an ElevenLabs voice reads it to the class:</p>
+          <p class="quote">“SkyWindow update: the air in this room just spiked, so ventilate right away.”</p>
+        </div>
+      </div>
+    </section>
+
+    <section data-ch="now" data-name="Right now" data-theme="light" style="height: 200vh">
+      <div class="copy pos-left plate now-panel" data-in="0.1" data-out="1.5">
+        <h2>Should PHS open its windows right now?</h2>
+        <p id="now-verdict" class="verdict verdict-now">…</p>
+        <p class="why" data-bind="now-why">Checking the sky over PHS.</p>
+        <p class="note" data-bind="now-note"></p>
+        <div class="actions">
+          <a class="btn btn-solid" href="app.html">Open the live window</a>
+          <button class="btn btn-outline" type="button" data-restart>Watch again</button>
+        </div>
+        <div class="credits">
+          <p>Built at hackPHS 2026 by [Team names].</p>
+          <p>Data: Open-Meteo and the CAMS atmosphere model (CC BY 4.0). Fire detections: NASA FIRMS. Satellite model: NASA 3D Resources. Map: OpenStreetMap contributors (ODbL).</p>
+        </div>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
